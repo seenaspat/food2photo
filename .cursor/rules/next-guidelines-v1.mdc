@@ -1,0 +1,83 @@
+---
+globs: *.ts,*.tsx
+---
+# Next.js + React stability and type-safety rules
+
+## Core principles
+- Prefer derived state over mirrored state. Read from the source (URL, store, query cache) instead of syncing with `useEffect` + `useState`.
+- Never block rendering behind custom "ready" flags if the UI can render without them. Use Suspense boundaries for data/params that require it.
+- Eliminate race conditions by making one source of truth (URL/query cache/context), not duplicated local state.
+- Strict TypeScript only: avoid `any`, `as any`, non-null assertions (`!`) and `@ts-ignore`. Find or define precise types.
+
+## Effects and data fetching
+- Do NOT fetch in `useEffect`. Use:
+  - Next.js Server Components/Route Handlers for server data.
+  - `@tanstack/react-query` for client data with typed `queryFn` and `queryKey`.
+  - `use()`/Suspense-aware patterns when applicable.
+
+- Do NOT sync URL <-> local state with effects. Instead, read from `useSearchParams()` (wrapped in a Suspense boundary at the page/layout) or update via `router.replace()`/`router.push()` only.
+
+Bad (mirrored state):
+```tsx
+// DO NOT
+const [view, setView] = useState('analysis')
+useEffect(() => { setView(searchParams.get('view') ?? 'analysis') }, [searchParams])
+```
+
+Good (derived state):
+```tsx
+const viewParam = (useSearchParams().get('view') as 'analysis'|'applications'|null)
+const view = viewParam ?? 'analysis'
+```
+
+## Suspense and app router
+- If a component calls `useSearchParams`, ensure an ancestor `<Suspense fallback={...}>` exists for that tree (Next 15 requirement).
+- Keep fallbacks lightweight; never gate the whole app on ad‑hoc flags like `isAuthReady`.
+
+## State management
+- Avoid `useEffect`+`useState` for request/response or URL-driven UI. Prefer:
+  - Derived values from URL, props, or context.
+  - `useReducer` for event-driven UI flows.
+  - `useSyncExternalStore` for custom stores (if needed), not for mirroring params.
+
+## Authentication/session
+- Render based on `user` presence. Do not block the UI behind custom hydration gates. If session check fails, still render the sign-in path.
+
+## TypeScript rules (must follow)
+- No `any` or `as any`. If a type is unknown, define/narrow it.
+- Strongly type public APIs, route handlers, and React Query `queryFn` return values.
+- Use `unknown` and narrow with guards instead of `any`.
+- Prefer precise unions and generics over broad types.
+- Never discard errors; type and handle them.
+
+Examples:
+```ts
+type DocumentType = 'cv' | 'cover_letter'
+
+interface Variant {
+  id: string
+  document_type: DocumentType
+  content: string
+}
+
+async function listVariants(t: DocumentType, jobId: string): Promise<Variant[]> {
+  const res = await fetch(`/api/documents/list?document_type=${t}&job_analysis_id=${jobId}`)
+  if (!res.ok) throw new Error('Failed to fetch variants')
+  const json: { data?: { variants?: Variant[] } } = await res.json()
+  return json.data?.variants ?? []
+}
+```
+
+## Navigation
+- Use `router.replace()`/`router.push()` to change state; do not mutate history manually.
+- Keyboard shortcuts should call a single navigation function; avoid setting local state then syncing URL.
+
+## Providers
+- Do not wrap the same provider twice (e.g., global context in `layout.tsx` and again in a page). Duplicate providers cause hydration/skeleton hangs.
+
+## Long-running async/UI guards
+- Never set local "ready" flags without a hard timeout/cleanup. Prefer rendering meaningful placeholders and letting data loaders resolve.
+
+## Testing/observability
+- Log and guard long async paths; never swallow errors. Keep fallbacks deterministic and typed.
+

@@ -1,0 +1,105 @@
+---
+alwaysApply: false
+description: Guidelines for creating effective PRDs in the Food2Photo project
+---
+
+## Food2Photo PRD Guidelines
+
+This rule provides guidelines for creating effective Product Requirements Documents (PRDs) within the Food2Photo project. PRDs define what needs to be built and why, ensuring alignment before implementation begins, especially for significant features or workflow changes.
+
+### 1. Purpose of a PRD
+
+- **Define the "What" and "Why"**: Clearly articulate the problem being solved, the target users, and the proposed solution/feature.
+- **Establish Scope**: Define what is included and explicitly what is not included.
+- **Align Stakeholders**: Ensure shared understanding across product, design, and engineering (including AI agents).
+- **Guide Implementation**: Provide requirements that inform design mockups, technical design (ADRs), and implementation tasks (AI TODOs).
+- **Define Success**: Outline how the success of the feature will be measured.
+
+### 2. Core Principles
+
+- **User-Centric**: Focus on the user's problems, goals, and workflows.
+- **Clarity & Precision**: Use unambiguous language. Define terms and concepts clearly.
+- **Context Rich**: Provide background information and link to related documents (existing features, ADRs, research, etc.).
+- **Preliminary Research**: Before finalizing requirements, research how similar problems are solved by top companies or established patterns. Use the web search tool or ask for examples to investigate.
+- **Visual Communication**: Use mockups, wireframes, and diagrams (Mermaid for user flows) to illustrate concepts.
+- **Testable Requirements**: Write requirements so they can be verified.
+- **Iterative**: A PRD is a living document; major changes after approval should trigger re-alignment.
+
+### 3. When to Create a PRD
+
+Create a PRD when a request involves:
+
+- **Major new features** or user-facing capabilities.
+- **Significant changes** to core workflows or user interfaces.
+- **Integration with new external services** that impact user experience.
+- **Cross-functional scope** (significant backend and frontend changes driven by a new user need).
+- **Unclear scope or requirements** that need definition before technical planning.
+
+### 4. Essential PRD Components
+
+- **1. Introduction / Overview**
+  - **Problem Statement**: What user problem are we solving? Why is it important?
+  - **Goals / Objectives**: Specific, measurable goals (e.g., increase conversion by X%, reduce task time by Y%).
+  - **Target Audience**: Who is this for? Define personas if applicable.
+- **2. Scope**
+  - **In Scope**: Features and functionalities included in this release.
+  - **Out of Scope (Non-Goals)**: Explicitly state what is not being built to manage expectations.
+- **3. User Stories / Use Cases**
+  - Concise user stories: "As a [type of user], I want to [task] so that [benefit]."
+  - Include specific scenarios and edge cases.
+- **4. Requirements**
+  - **Functional Requirements**: Numbered, testable statements (e.g., "The system must allow users to filter by status.").
+  - **Non-Functional Requirements**: Performance, security, accessibility, usability (e.g., page load < X s, WCAG 2.1 AA, API response < Y ms).
+- **5. Design & User Experience (UX)**
+  - **User Flow Diagrams**: Prefer Mermaid for version control.
+  - **Mockups / Wireframes**: Embed or link to design artifacts (e.g., Figma).
+  - **UI Copy / Content**: Specify key text, labels, and messages.
+- **6. Open Questions**
+  - Unresolved questions and areas needing research.
+- **7. Success Metrics**
+  - Measurable metrics tied back to goals.
+- **8. Future Considerations (Optional)**
+  - Potential enhancements beyond current scope.
+- **9. Related Documents**
+  - Link to relevant ADRs, research docs, previous PRDs, and AI Task docs using the `[name](mdc:path)` format when those documents exist in-repo.
+
+### 5. Using Diagrams (Mermaid)
+
+Mermaid diagrams are encouraged for visualizing flows.
+
+- **User Flows**: Map out steps a user takes to accomplish a task.
+
+```mermaid
+graph TD
+    A[User opens Task List] --> B{Selects 'Create Task'}
+    B --> C[Enters Task Title]
+    C --> D{Assigns User (Optional)}
+    D --> E[Sets Due Date (Optional)]
+    E --> F[Clicks 'Save']
+    F --> G[Task appears in List]
+    F --> H[Notification Sent (if assigned)]
+```
+
+- **State Diagrams**: Use for features with distinct states (e.g., approval workflow).
+
+### 6. Context and Referencing
+
+- **Assume Nothing**: Provide enough background for someone unfamiliar to understand the context.
+- **Link Aggressively**: Use `[name](mdc:path)` links to connect to ADRs, data models, existing UI components, user feedback, or technical docs that already exist in the repo.
+
+### 7. Review and Iteration
+
+- Treat a PRD as collaborative. Seek feedback from design and engineering before finalizing requirements.
+- Keep the PRD updated if significant changes occur during development so it remains the source of truth for intended functionality.
+
+### 8. Relation to AI Tasks
+
+- The PRD defines the what and why.
+- Once sufficiently defined, a PRD becomes the primary input for creating detailed, actionable AI Task documents that outline the how for implementation. AI tasks should reference the specific PRD and requirement numbers they address.
+
+### 9. Food2Photo Context Cues
+
+- For authentication and user management, consider current flows in `app/auth/*` and Supabase utilities in `lib/supabase/*`.
+- For access-gated pages or flows, review `app/protected/*`.
+- Align performance expectations with Next.js (SSR/ISR) and Supabase constraints; define concrete budgets (e.g., image upload latency, signed URL lifetimes) when relevant to image workflows.
+
