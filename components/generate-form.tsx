@@ -26,6 +26,7 @@ export function GenerateForm() {
   const [backgroundPreviewUrl, setBackgroundPreviewUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [lensLook, setLensLook] = useState<SelectedLensLook>("50mm");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const acceptedTypes = ["image/jpeg", "image/png", "image/heic"];
   const maxFileSizeBytes = 15 * 1024 * 1024;
@@ -145,10 +146,46 @@ export function GenerateForm() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button type="button" disabled>
-            <Sparkles className="size-4" /> Generate
+          <Button
+            type="button"
+            disabled={!dishFile || isSubmitting}
+            onClick={async () => {
+              if (!dishFile) return;
+              try {
+                setIsSubmitting(true);
+                const formData = new FormData();
+                formData.append("dish", dishFile);
+                if (backgroundFile) formData.append("background", backgroundFile);
+                formData.append("prompt", prompt);
+                formData.append("lensLook", lensLook);
+
+                const res = await fetch("/api/generate", {
+                  method: "POST",
+                  body: formData,
+                });
+                if (!res.ok) {
+                  throw new Error(`Generate failed: ${res.status}`);
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "enhanced.jpg";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+              } catch (e) {
+                console.error(e);
+                alert("Generation failed. Please try again.");
+              } finally {
+                setIsSubmitting(false);
+              }
+            }}
+          >
+            <Sparkles className="size-4" /> {isSubmitting ? "Generating..." : "Generate"}
           </Button>
-          <p className="text-xs text-muted-foreground">We’ll wire this to the API next.</p>
+          <p className="text-xs text-muted-foreground">No storage yet; result downloads directly.</p>
         </div>
       </CardContent>
     </Card>
