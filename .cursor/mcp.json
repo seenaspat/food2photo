@@ -6,7 +6,10 @@
           "shadcn@latest",
           "mcp"
         ]
-      }
+      },
+      "shadcn-io": {
+      "url": "https://www.shadcn.io/api/mcp"
+    }
     }
   }
   
