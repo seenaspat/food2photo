@@ -9,6 +9,7 @@ export async function POST(request: Request) {
     const background = formData.get("background");
     const prompt = String(formData.get("prompt") || "");
     const lensLook = String(formData.get("lensLook") || "");
+    const aspectRatio = String(formData.get("aspectRatio") || "");
 
     if (!(dish instanceof File)) {
       return NextResponse.json({ error: "Missing dish file" }, { status: 400 });
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
       prompt && prompt.trim().length > 0
         ? `Tastefully incorporate this user style hint as soft guidance only: “${prompt}”.`
         : "",
+      (aspectRatio ? `Target aspect ratio: ${aspectRatio}. Keep composition within this frame.` : undefined),
       "Output intent: Photorealistic, print-ready quality. For social, prefer 4:5 portrait or 1:1 square crops with safe margins for overlays; otherwise 3:2."
     ].filter(Boolean).join(" ");
 

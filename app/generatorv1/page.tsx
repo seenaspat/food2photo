@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Download, Image as ImageIcon } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square } from "lucide-react";
 import {
 	Carousel,
 	CarouselContent,
@@ -44,17 +44,30 @@ const styleSuggestions = [
 	"neon lights",
 ];
 
-const lensOptions = ["35mm", "50mm", "85mm", "85mm/macro"] as const;
+const lensOptions = ["35mm", "50mm", "85mm/macro"] as const;
 
 type Lens = typeof lensOptions[number];
+const aspectRatioOptions = [
+    { id: "3:2", label: "3:2", icon: RectangleHorizontal },
+    { id: "1:1", label: "1:1", icon: Square },
+    { id: "4:5", label: "4:5", icon: RectangleVertical },
+    { id: "16:9", label: "16:9", icon: RectangleHorizontal },
+    { id: "9:16", label: "9:16", icon: RectangleVertical },
+] as const;
+type AspectRatioId = typeof aspectRatioOptions[number]["id"];
 
 export default function GeneratorV1Page() {
 	const [uploaded, setUploaded] = useState<File | null>(null);
 	const [selectedBackground, setSelectedBackground] = useState<string | null>(
 		"none"
 	);
-	const [styleHint, setStyleHint] = useState<string>(styleSuggestions[0]);
-	const [lens, setLens] = useState<Lens>("50mm");
+	const [backgroundUpload, setBackgroundUpload] = useState<File | null>(null);
+	const [styleHint, setStyleHint] = useState<string>();
+	const [lens, setLens] = useState<Lens>("85mm/macro");
+	const [isGenerating, setIsGenerating] = useState<boolean>(false);
+	const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+	const [outputMime, setOutputMime] = useState<string | null>(null);
+	const [aspectRatio, setAspectRatio] = useState<AspectRatioId>("1:1");
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
 
 	// Split backgrounds into pages of 3x3 (9 items per page)
@@ -105,59 +118,79 @@ export default function GeneratorV1Page() {
 							<CardTitle>2) Background</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<div className="mb-3">
-								<div className="inline-flex items-center gap-3">
-									<Badge variant="secondary">Gallery</Badge>
-									<Badge variant="outline">Upload</Badge>
-								</div>
-							</div>
 							<div className="w-full">
-								<Carousel
-									opts={{ align: "start", loop: false }}
-									className="w-full"
-								>
-									<div className="flex items-center justify-center gap-4">
-										<CarouselPrevious className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
-										<div className="flex-1 overflow-hidden">
-											<CarouselContent>
-												{backgroundPages.map((page, pageIndex) => (
-													<CarouselItem key={pageIndex} className="basis-full">
-														<div className="grid grid-cols-3 gap-3">
-															{page.map((bg, itemIndex) =>
-																bg ? (
-																	<button
-																		key={bg.id}
-																		onClick={() => setSelectedBackground(bg.id)}
-																		className="text-left"
-																	>
-																		<Card
-																			className={
-																				selectedBackground === bg.id
-																					? "border-primary ring-1 ring-primary"
-																					: ""
-																			}
-																		>
-																			<CardContent className="p-0">
-																				<div className="aspect-square bg-muted/30 flex items-center justify-center">
-																					<ImageIcon className="h-8 w-8 text-muted-foreground" />
-																				</div>
-																				<div className="p-2 text-sm">{bg.label}</div>
-																			</CardContent>
-																		</Card>
-																	</button>
-																) : (
-																	<div key={`placeholder-${pageIndex}-${itemIndex}`} />
-																)
-															)}
-														</div>
-													</CarouselItem>
-												))}
-											</CarouselContent>
+								<Tabs defaultValue="gallery" className="w-full">
+									<TabsList>
+										<TabsTrigger value="gallery">Gallery</TabsTrigger>
+										<TabsTrigger value="upload">Upload</TabsTrigger>
+									</TabsList>
+									<TabsContent value="gallery">
+										<Carousel
+											opts={{ align: "start", loop: false }}
+											className="w-full"
+										>
+											<div className="flex items-center justify-center gap-4">
+												<CarouselPrevious className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
+												<div className="flex-1 overflow-hidden">
+													<CarouselContent>
+														{backgroundPages.map((page, pageIndex) => (
+															<CarouselItem key={pageIndex} className="basis-full">
+																<div className="p-1 grid grid-cols-3 gap-3">
+																	{page.map((bg, itemIndex) =>
+																		bg ? (
+																			<button
+																				key={bg.id}
+																				onClick={() => setSelectedBackground(bg.id)}
+																				className="text-left"
+																			>
+																				<Card
+																					className={
+																						selectedBackground === bg.id
+																							? "border-primary ring-1 ring-primary"
+																							: ""
+																					}
+																				>
+																					<CardContent className="p-0">
+																						<div className="aspect-square bg-muted/30 flex items-center justify-center">
+																							<ImageIcon className="h-8 w-8 text-muted-foreground" />
+																						</div>
+																						<div className="p-2 text-sm">{bg.label}</div>
+																					</CardContent>
+																				</Card>
+																			</button>
+																		) : (
+																			<div key={`placeholder-${pageIndex}-${itemIndex}`} />
+																		)
+																)}
+															</div>
+														</CarouselItem>
+													))}
+												</CarouselContent>
+											</div>
+											<CarouselNext className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
 										</div>
-										<CarouselNext className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
-									</div>
-									<CarouselDots count={backgroundPages.length} className="mt-4" />
-								</Carousel>
+										<CarouselDots count={backgroundPages.length} className="mt-4" />
+									</Carousel>
+									</TabsContent>
+									<TabsContent value="upload">
+										<div className="space-y-3">
+											<FileUpload
+													uploadDelay={0}
+													acceptedFileTypes={["image/jpeg", "image/png", "image/webp"]}
+													onUploadSuccessAction={(file) => {
+														setBackgroundUpload(file)
+														setSelectedBackground("none")
+													}}
+													className="max-w-full"
+												/>
+											{backgroundUpload ? (
+												<p className="text-xs text-muted-foreground">Uploaded: {backgroundUpload.name}</p>
+											) : (
+												<p className="text-xs text-muted-foreground">Upload a custom background image.</p>
+											)}
+										</div>
+									</TabsContent>
+								</Tabs>
 							</div>
 						</CardContent>
 					</Card>
@@ -171,17 +204,28 @@ export default function GeneratorV1Page() {
 								value={styleHint}
 								onChange={(e) => setStyleHint(e.target.value)}
 								maxLength={250}
-								placeholder="Describe el estilo..."
+								placeholder="Describe details of the image scenery, style, etc."
 							/>
-							<div className="mt-2 text-xs text-muted-foreground flex justify-between">
-								<span>Sugerencias:</span>
-								<span>{styleHint.length}/250</span>
-							</div>
-							<div className="mt-2 flex flex-wrap gap-2">
-								{styleSuggestions.slice(1).map((s) => (
-									<Button key={s} variant="secondary" size="sm" onClick={() => setStyleHint(s)}>
-										{s}
-									</Button>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardHeader>
+							<CardTitle>4) Lens Look</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<div className="grid grid-cols-3 gap-3">
+								{lensOptions.map((opt) => (
+									<button key={opt} onClick={() => setLens(opt)} className="text-left">
+										<Card className={lens === opt ? "border-primary ring-1 ring-primary" : ""}>
+											<CardContent className="p-0">
+												<div className="aspect-square bg-muted/30 flex items-center justify-center">
+													<ImageIcon className="h-8 w-8 text-muted-foreground" />
+												</div>
+												<div className="p-2 text-sm">{opt}</div>
+											</CardContent>
+										</Card>
+									</button>
 								))}
 							</div>
 						</CardContent>
@@ -192,23 +236,68 @@ export default function GeneratorV1Page() {
 							<CardTitle>5) Aspect Ratio</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<div className="flex flex-wrap gap-2">
-								{lensOptions.map((opt) => (
-									<Button
-										key={opt}
-										variant={lens === opt ? "default" : "outline"}
-										onClick={() => setLens(opt)}
-									>
-										{opt}
-									</Button>
-								))}
-							</div>
+							<Carousel opts={{ align: "start", loop: false }} className="w-full">
+								<div className="flex items-center justify-center gap-4">
+									{/* <CarouselPrevious className="static inset-auto translate-x-0 translate-y-0 shrink-0" /> */}
+									<div className="flex-1 overflow-hidden">
+										<CarouselContent>
+											{aspectRatioOptions.map((opt) => {
+												const Icon = opt.icon;
+												return (
+													<CarouselItem key={opt.id} className="p-1 basis-1/3 sm:basis-1/4 md:basis-1/5 lg:basis-1/6">
+														<button onClick={() => setAspectRatio(opt.id)} className="text-left w-full">
+															<Card className={aspectRatio === opt.id ? "border-primary ring-1 ring-primary" : ""}>
+																<CardContent className="p-0">
+																	<div className="aspect-square bg-muted/30 flex items-center justify-center">
+																		<Icon className="h-8 w-8 text-muted-foreground" />
+																	</div>
+																	<div className="p-2 text-sm">{opt.label}</div>
+																</CardContent>
+															</Card>
+														</button>
+													</CarouselItem>
+												);
+											})}
+										</CarouselContent>
+									</div>
+									{/* <CarouselNext className="static inset-auto translate-x-0 translate-y-0 shrink-0" /> */}
+								</div>
+							</Carousel>
 						</CardContent>
 					</Card>
 
-					<Button className="w-full" size="lg" disabled={!canEnhance}>
-						Enhance Photo
-					</Button>
+					<Button
+							className="w-full"
+							size="lg"
+							disabled={!canEnhance || isGenerating}
+							onClick={async () => {
+								if (!uploaded) return;
+								try {
+									setIsGenerating(true);
+									setGeneratedImageUrl(null);
+									const fd = new FormData();
+									fd.append("dish", uploaded);
+									if (backgroundUpload) fd.append("background", backgroundUpload);
+									fd.append("prompt", styleHint);
+									fd.append("lensLook", lens);
+									fd.append("aspectRatio", aspectRatio);
+									const resp = await fetch("/api/generate", { method: "POST", body: fd });
+									if (!resp.ok) {
+										throw new Error(`Generation failed: ${resp.status}`);
+									}
+									const blob = await resp.blob();
+									setOutputMime(blob.type || null);
+									const url = URL.createObjectURL(blob);
+									setGeneratedImageUrl(url);
+								} catch (e) {
+									console.error(e);
+								} finally {
+									setIsGenerating(false);
+								}
+							}}
+						>
+							{isGenerating ? "Enhancing..." : "Enhance Photo"}
+						</Button>
 				</div>
 
 				<div className="space-y-4">
@@ -216,22 +305,32 @@ export default function GeneratorV1Page() {
 						<CardHeader>
 							<CardTitle className="flex items-center justify-between">
 								<span>Preview</span>
-								<span className="text-xs font-normal text-muted-foreground">Lens: {lens} · Output: 2028 px</span>
+								<span className="text-xs font-normal text-muted-foreground">Lens: {lens} · Ratio: {aspectRatio}</span>
 							</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<div className="aspect-square rounded-md border flex items-center justify-center bg-muted">
-								<ImageIcon className="h-10 w-10 text-muted-foreground" />
-							</div>
+							{generatedImageUrl ? (
+								<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
+							) : (
+								<div className="aspect-square rounded-md border flex items-center justify-center bg-muted">
+									<ImageIcon className="h-10 w-10 text-muted-foreground" />
+								</div>
+							)}
 							<div className="mt-4 flex items-center gap-2">
-								<Button className="gap-2">
-									<Download className="h-4 w-4" /> Download
-								</Button>
-								<Input className="w-28" value="JPEG" readOnly />
-								<Button variant="outline">PN.1</Button>
-								<Button variant="ghost">View original</Button>
+								{generatedImageUrl ? (
+									<a href={generatedImageUrl} download className="inline-flex">
+										<Button className="gap-2" asChild>
+											<span>
+												<Download className="h-4 w-4" /> Download
+											</span>
+										</Button>
+									</a>
+								) : (
+									<Button className="gap-2" disabled>
+										<Download className="h-4 w-4" /> Download
+									</Button>
+								)}
 							</div>
-							<p className="mt-2 text-xs text-muted-foreground">Ready. Render time: 11.4s</p>
 						</CardContent>
 					</Card>
 				</div>
