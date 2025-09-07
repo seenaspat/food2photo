@@ -23,9 +23,7 @@ interface BackgroundOption {
 	thumb: string; // placeholder URL
 }
 
-/**
- * Background options for the generator
- */
+
 const backgroundOptions: BackgroundOption[] = [
 	{ id: "none", label: "No background", thumb: "/opengraph-image.png" },
 	{ id: "wood", label: "Wood", thumb: "/opengraph-image.png" },
