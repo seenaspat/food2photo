@@ -1,0 +1,51 @@
+{
+  "name": "",
+  "category": "",
+  "cuisine": "",
+  "course": "",
+  "components": [
+    {
+      "role": "",
+      "name": "",
+      "prep": "",
+      "cut": "",
+      "count": 1,
+      "approx_size_mm": null,
+      "color": "",
+      "texture": "",
+      "gloss": "low",
+      "translucency": "none",
+      "must_preserve": true
+    }
+  ],
+  "arrangement": {
+    "serving_state": "",
+    "layer_order": [
+      { "name": "", "coverage_pct": 0, "thickness_mm": null }
+    ],
+    "footprint": { "shape": "", "major_cm": null, "minor_cm": null, "orientation_deg": 0 },
+    "repeated_units": { "count": null, "pattern": "" }
+  },
+  "vessel": {
+    "type": "",
+    "material": "",
+    "color": "",
+    "finish": "",
+    "shape": "",
+    "rim_profile": "",
+    "diameter_cm": null,
+    "depth_cm": null,
+    "liner": ""
+  },
+  "sauces": [],
+  "garnish": [],
+  "base_area": { "crumbs": "none", "droplets": "none" },
+  "optics": { "moisture_gloss": "medium", "specular": "satin", "meltiness": "none", "char_marks": "none", "broth_opacity": "n/a" },
+  "temperature": { "steam": "none", "condensation": "none", "ice_crystals": "none" },
+  "approximate_scale": { "subject_width_cm": null, "vessel_diameter_cm": null, "key_thickness_mm": {} },
+  "camera_hint": { "angle": "", "dof": "", "cross_section_visible": false },
+  "constraints": { "must_preserve": [], "allowed_variation": [] },
+  "category_addons": {}
+}
+
+
