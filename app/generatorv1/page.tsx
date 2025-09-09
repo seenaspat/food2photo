@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import FileUpload from "@/components/kokonutui/file-upload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,13 +86,6 @@ const backgroundOptions: BackgroundOption[] = [
             preset: core.replace(/^bg-v3-/, ""),
         } satisfies BackgroundOption;
     }),
-];
-
-const styleSuggestions = [
-	"bright editorial, soft natural light",
-	"seafood restaurant",
-	"american diner",
-	"neon lights",
 ];
 
 const lensOptions = ["35mm", "50mm", "85mm/macro"] as const;
@@ -185,6 +177,7 @@ export default function GeneratorV1Page() {
 							<FileUpload
 								uploadDelay={0}
 								acceptedFileTypes={["image/jpeg", "image/png", "image/webp"]}
+								maxFileSize={15 * 1024 * 1024}
 								onUploadSuccessAction={setUploaded}
 								onFileRemoveAction={() => setUploaded(null)}
 								className="max-w-full"
@@ -272,16 +265,17 @@ export default function GeneratorV1Page() {
 									</TabsContent>
 									<TabsContent value="upload">
 										<div className="space-y-3">
-											<FileUpload
-													uploadDelay={0}
-													acceptedFileTypes={["image/jpeg", "image/png", "image/webp"]}
-													onUploadSuccessAction={(file) => {
-														setBackgroundUpload(file)
-														setSelectedBackground("none")
-													}}
-													onFileRemoveAction={() => setBackgroundUpload(null)}
-													className="max-w-full"
-												/>
+															<FileUpload
+																uploadDelay={0}
+																acceptedFileTypes={["image/jpeg", "image/png", "image/webp"]}
+																maxFileSize={15 * 1024 * 1024}
+																onUploadSuccessAction={(file) => {
+																	setBackgroundUpload(file)
+																	setSelectedBackground("none")
+																}}
+																onFileRemoveAction={() => setBackgroundUpload(null)}
+																className="max-w-full"
+															/>
 														{backgroundUpload ? (
 															<div className="mt-3 flex items-center gap-3">
 																<div className="size-16 overflow-hidden rounded border">

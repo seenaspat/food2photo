@@ -31,33 +31,35 @@ export async function POST(request: Request) {
     const dishArrayBuffer = await dish.arrayBuffer();
     const dishOriginalBuffer = Buffer.from(new Uint8Array(dishArrayBuffer));
     // Create AR-locked canvas with the dish centered (single reference image with target aspect)
+    // Reduce dimensions and use JPEG to keep the request body small and avoid 413 from the gateway
     const canvasDims = (() => {
+      // Max long edge ~1280px to keep payloads small
       switch (aspectRatio) {
-        case "1:1": return { w: 1536, h: 1536 };
-        case "4:5": return { w: 1280, h: 1600 };
-        case "3:2": return { w: 1536, h: 1024 };
-        case "16:9": return { w: 1536, h: 864 };
-        case "9:16": return { w: 864, h: 1536 };
-        default: return { w: 1536, h: 1536 };
+        case "1:1": return { w: 1024, h: 1024 };
+        case "4:5": return { w: 1024, h: 1280 };
+        case "3:2": return { w: 1200, h: 800 };
+        case "16:9": return { w: 1280, h: 720 };
+        case "9:16": return { w: 720, h: 1280 };
+        default: return { w: 1024, h: 1024 };
       }
     })();
     // Build AR-locked canvas: blurred cover background + sharp contain overlay to avoid bars AND prevent subject crop
-    const coverBg = await sharp(dishOriginalBuffer)
+    const coverBgJpg = await sharp(dishOriginalBuffer)
       .rotate()
       .resize({ width: canvasDims.w, height: canvasDims.h, fit: "cover" })
-      .blur(30)
-      .png()
+      .blur(24)
+      .jpeg({ quality: 72, mozjpeg: true })
       .toBuffer();
-    const overlay = await sharp(dishOriginalBuffer)
+    const overlayPng = await sharp(dishOriginalBuffer)
       .rotate()
       .resize({ width: Math.floor(canvasDims.w * 0.92), height: Math.floor(canvasDims.h * 0.92), fit: "inside", background: { r: 255, g: 255, b: 255, alpha: 0 } })
-      .png()
+      .png({ compressionLevel: 9 })
       .toBuffer();
-    const canvasPng = await sharp(coverBg)
-      .composite([{ input: overlay, gravity: "center" }])
-      .png()
+    const canvasJpg = await sharp(coverBgJpg)
+      .composite([{ input: overlayPng, gravity: "center" }])
+      .jpeg({ quality: 80, mozjpeg: true })
       .toBuffer();
-    const dishDataUrl = `data:image/png;base64,${canvasPng.toString("base64")}`;
+    const dishDataUrl = `data:image/jpeg;base64,${canvasJpg.toString("base64")}`;
 
     // Load analysis template (external JSON) if available
     let analysisTemplateJson = "";
@@ -104,9 +106,14 @@ export async function POST(request: Request) {
 
     let dishSpec: unknown = null;
     if (analysisResp.ok) {
-      const analysisJson = (await analysisResp.json()) as any;
-      const content = analysisJson?.choices?.[0]?.message?.content;
-      let text = typeof content === "string" ? content : content?.[0]?.text;
+      type ChatCompletion = {
+        choices: Array<{
+          message?: { content?: unknown }
+        }>
+      };
+      const analysisJson = (await analysisResp.json()) as ChatCompletion;
+      const content = analysisJson?.choices?.[0]?.message?.content as unknown;
+      const text = typeof content === "string" ? content : (Array.isArray(content) ? (content as Array<{ text?: string }>)[0]?.text : undefined);
       if (debug) {
         const preview = typeof text === "string" ? text.slice(0, 1200) : "<non-text content>";
         console.log("[analysis] raw content (trunc):", preview);
@@ -129,10 +136,15 @@ export async function POST(request: Request) {
 
     let backgroundDataUrl: string | null = null;
     if (!bgPreset && background instanceof File) {
+      // Compress background to keep payload small as well
       const bgArrayBuffer = await background.arrayBuffer();
-      const bgBase64 = Buffer.from(bgArrayBuffer).toString("base64");
-      const bgMediaType = background.type || "image/jpeg";
-      backgroundDataUrl = `data:${bgMediaType};base64,${bgBase64}`;
+      const bgBuffer = Buffer.from(bgArrayBuffer);
+      const bgCompressed = await sharp(bgBuffer)
+        .rotate()
+        .resize({ width: 1280, height: 1280, fit: "inside" })
+        .jpeg({ quality: 78, mozjpeg: true })
+        .toBuffer();
+      backgroundDataUrl = `data:image/jpeg;base64,${bgCompressed.toString("base64")}`;
     }
 
     const effectiveLensLook = lensLook && lensLook.trim().length > 0 ? lensLook : "50mm";
@@ -230,7 +242,7 @@ export async function POST(request: Request) {
 
     const narrativeText = compositionTemplate;
 
-    const messagesContent: any[] = [
+    const messagesContent: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [
       { type: "text", text: narrativeText },
       { type: "image_url", image_url: { url: dishDataUrl } },
     ];
@@ -257,6 +269,8 @@ export async function POST(request: Request) {
             content: messagesContent,
           },
         ],
+        // Hard cap the server-side request size to avoid 413 on the gateway
+        // by explicitly keeping a compact context (no system/tool messages here)
       }),
     });
 
@@ -267,10 +281,13 @@ export async function POST(request: Request) {
     const json = (await resp.json()) as unknown;
 
     // Narrow the JSON structure to extract base64 image
+    type GatewayResponse = {
+      choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>
+    };
     const images =
       typeof json === "object" && json !== null &&
-      "choices" in json && Array.isArray((json as any).choices) &&
-      (json as any).choices[0]?.message?.images;
+      "choices" in (json as GatewayResponse) && Array.isArray((json as GatewayResponse).choices) &&
+      (json as GatewayResponse).choices?.[0]?.message?.images;
 
     const imageUrl: string | undefined = Array.isArray(images)
       ? images[0]?.image_url?.url
