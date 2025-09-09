@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import path from "node:path";
+import { readFile } from "node:fs/promises";
+import sharp from "sharp";
 
 export const runtime = "nodejs";
 
@@ -7,9 +10,12 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const dish = formData.get("dish");
     const background = formData.get("background");
+    const bgPreset = String(formData.get("bgPreset") || "");
     const prompt = String(formData.get("prompt") || "");
     const lensLook = String(formData.get("lensLook") || "");
     const aspectRatio = String(formData.get("aspectRatio") || "");
+    const preservePlate = String(formData.get("preservePlate") || "0") === "1";
+    const debug = (process.env.DEBUG_ANALYSIS === "1") || (() => { try { return new URL(request.url).searchParams.get("debug") === "1"; } catch { return false; }})();
 
     if (!(dish instanceof File)) {
       return NextResponse.json({ error: "Missing dish file" }, { status: 400 });
@@ -23,51 +29,214 @@ export async function POST(request: Request) {
     }
 
     const dishArrayBuffer = await dish.arrayBuffer();
-    const dishBase64 = Buffer.from(dishArrayBuffer).toString("base64");
-    const dishMediaType = dish.type || "image/jpeg";
-    const dishDataUrl = `data:${dishMediaType};base64,${dishBase64}`;
+    const dishOriginalBuffer = Buffer.from(new Uint8Array(dishArrayBuffer));
+    // Create AR-locked canvas with the dish centered (single reference image with target aspect)
+    const canvasDims = (() => {
+      switch (aspectRatio) {
+        case "1:1": return { w: 1536, h: 1536 };
+        case "4:5": return { w: 1280, h: 1600 };
+        case "3:2": return { w: 1536, h: 1024 };
+        case "16:9": return { w: 1536, h: 864 };
+        case "9:16": return { w: 864, h: 1536 };
+        default: return { w: 1536, h: 1536 };
+      }
+    })();
+    // Build AR-locked canvas: blurred cover background + sharp contain overlay to avoid bars AND prevent subject crop
+    const coverBg = await sharp(dishOriginalBuffer)
+      .rotate()
+      .resize({ width: canvasDims.w, height: canvasDims.h, fit: "cover" })
+      .blur(30)
+      .png()
+      .toBuffer();
+    const overlay = await sharp(dishOriginalBuffer)
+      .rotate()
+      .resize({ width: Math.floor(canvasDims.w * 0.92), height: Math.floor(canvasDims.h * 0.92), fit: "inside", background: { r: 255, g: 255, b: 255, alpha: 0 } })
+      .png()
+      .toBuffer();
+    const canvasPng = await sharp(coverBg)
+      .composite([{ input: overlay, gravity: "center" }])
+      .png()
+      .toBuffer();
+    const dishDataUrl = `data:image/png;base64,${canvasPng.toString("base64")}`;
+
+    // Load analysis template (external JSON) if available
+    let analysisTemplateJson = "";
+    try {
+      const analysisPath = path.join(process.cwd(), "templates", "analysis", "dish-spec-template-v1.json");
+      const raw = await readFile(analysisPath, "utf8");
+      analysisTemplateJson = raw;
+    } catch {}
+
+    // First pass: analyze dish → JSON spec (strict)
+    const analysisPrompt = [
+      "Analyze Image A (the dish) and return a strict JSON object describing it.",
+      analysisTemplateJson ? `Use this JSON schema and fill plausible values only: ${analysisTemplateJson}` : "Return a compact JSON with fields described below.",
+      !analysisTemplateJson ? "Fields:" : "",
+      !analysisTemplateJson ? "- name, category, cuisine, course" : "",
+      !analysisTemplateJson ? "- components[] with role,name,prep,cut,count,approx_size_mm,color,texture,gloss,translucency,must_preserve" : "",
+      !analysisTemplateJson ? "- arrangement (serving_state, layer_order with coverage_pct & thickness_mm, footprint shape/dimensions, repeated_units)" : "",
+      !analysisTemplateJson ? "- vessel (type, material, color, finish, shape, rim_profile, diameter_cm, depth_cm, liner)" : "",
+      !analysisTemplateJson ? "- sauces[], garnish[], base_area, optics, temperature" : "",
+      !analysisTemplateJson ? "- approximate_scale, camera_hint, constraints, category_addons (optional)" : "",
+      "Return JSON only. No prose.",
+    ].filter(Boolean).join("\n");
+
+    const analysisResp = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        stream: false,
+        modalities: ["text", "image"],
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: analysisPrompt },
+              { type: "image_url", image_url: { url: dishDataUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+    if (debug) console.log("[analysis] status:", analysisResp.status, analysisResp.statusText);
+
+    let dishSpec: unknown = null;
+    if (analysisResp.ok) {
+      const analysisJson = (await analysisResp.json()) as any;
+      const content = analysisJson?.choices?.[0]?.message?.content;
+      let text = typeof content === "string" ? content : content?.[0]?.text;
+      if (debug) {
+        const preview = typeof text === "string" ? text.slice(0, 1200) : "<non-text content>";
+        console.log("[analysis] raw content (trunc):", preview);
+      }
+      if (typeof text === "string") {
+        try { dishSpec = JSON.parse(text); } catch {}
+      }
+    } else if (debug) {
+      try { console.log("[analysis] error:", await analysisResp.text()); } catch {}
+    }
+
+    let dishSpecSnippet = "";
+    if (dishSpec && typeof dishSpec === "object") {
+      dishSpecSnippet = `DISH_SPEC:\n${JSON.stringify(dishSpec)}`;
+      if (debug) {
+        try { console.log("[analysis] parsed keys:", Object.keys(dishSpec as Record<string, unknown>)); } catch {}
+        console.log("[analysis] dishSpec JSON:", dishSpec);
+      }
+    }
 
     let backgroundDataUrl: string | null = null;
-    if (background instanceof File) {
+    if (!bgPreset && background instanceof File) {
       const bgArrayBuffer = await background.arrayBuffer();
       const bgBase64 = Buffer.from(bgArrayBuffer).toString("base64");
       const bgMediaType = background.type || "image/jpeg";
       backgroundDataUrl = `data:${bgMediaType};base64,${bgBase64}`;
     }
 
-    const effectiveLensLook = lensLook && lensLook.trim().length > 0 ? lensLook : "50mm prime lens";
-    const narrativeText = [
+    const effectiveLensLook = lensLook && lensLook.trim().length > 0 ? lensLook : "50mm";
+    const lens = effectiveLensLook.toLowerCase();
+    const lensMap = (() => {
+      if (lens.includes("85")) {
+        return {
+          focalDesc: "85mm / macro portrait look",
+          dof: "shallow",
+          subjectOcc: "55–70%",
+          fovHint: "tight composition; compressed background and strong bokeh",
+          cropRule: "Frame tight on the dish. If needed, zoom or crop so the subject fills most of the frame with minimal surrounding environment."
+        };
+      }
+      if (lens.includes("35")) {
+        return {
+          focalDesc: "35mm wide-normal",
+          dof: "medium",
+          subjectOcc: "28–40%",
+          fovHint: "wider field of view; more environment visible; gentle bokeh",
+          cropRule: "Pull back to include more of the environment around the dish. Keep generous negative space and context."
+        };
+      }
+      return {
+        focalDesc: "50mm natural perspective",
+        dof: "shallow–medium",
+        subjectOcc: "40–55%",
+        fovHint: "balanced FOV; natural background compression",
+        cropRule: "Compose with a balanced crop: subject prominent, but leave clear context around it."
+      };
+    })();
+    // Compose prompt from external generation template
+    let genTemplate = "";
+    try {
+      const genPath = path.join(process.cwd(), "templates", "generation", "compose-v1.md");
+      genTemplate = await readFile(genPath, "utf8");
+    } catch {}
+
+    // If preset: load backgrounds-v3.md template and vars JSON
+    let envSpecBlock = "";
+    if (bgPreset) {
+      try {
+        const bgTplPath = path.join(process.cwd(), "templates", "backgrounds-v3.md");
+        const bgTpl = await readFile(bgTplPath, "utf8");
+        const presetPath = path.join(process.cwd(), "templates", "varsv3", `${bgPreset}.json`);
+        const presetJson = await readFile(presetPath, "utf8");
+        envSpecBlock = [
+          "BACKGROUND_SPEC:",
+          "Template backgrounds-v3.md (excerpt)",
+          "---",
+          bgTpl.slice(0, 1200),
+          "---",
+          "Vars:",
+          presetJson
+        ].join("\n");
+      } catch {}
+    }
+
+    const bgLine = bgPreset
+      ? `Environment preset: ${bgPreset} via backgrounds-v3.md + vars`
+      : (backgroundDataUrl ? "Image B: the target environment/background" : "No background provided; synthesize a plausible environment consistent with restaurant photography");
+    const platePolicy = preservePlate ? "AND its original plate/vessel exactly" : "ONLY (render a new plate/vessel suitable to the environment)";
+
+    const filledTemplate = (genTemplate || "")
+      .replaceAll("{{BG_INPUT_LINE}}", bgLine)
+      .replaceAll("{{DISH_SPEC_JSON}}", dishSpecSnippet || "{}")
+      .replaceAll("{{FOCAL_DESC}}", lensMap.focalDesc)
+      .replaceAll("{{DOF_HINT}}", lensMap.dof)
+      .replaceAll("{{SUBJECT_OCC}}", lensMap.subjectOcc)
+      .replaceAll("{{FOV_HINT}}", lensMap.fovHint)
+      .replaceAll("{{CROP_RULE}}", lensMap.cropRule)
+      .replaceAll("{{ASPECT_RATIO}}", aspectRatio || "original")
+      .replaceAll("{{PLATE_POLICY}}", platePolicy)
+      .replaceAll("{{ENV_SPEC_BLOCK}}", envSpecBlock);
+
+    const compositionTemplate = filledTemplate || [
+      "Create a single photorealistic food photograph by combining the provided images.",
       backgroundDataUrl
-        ? "Image 1 = dish reference only. Image 2 = environment. Discard all of image 1's background/table/lighting and re-render a single cohesive commercial food photograph that merges the subject into the environment. Do not paste or superimpose."
-        : "Using the provided image as the dish reference, re-render a single cohesive commercial food photograph; do not keep the original backdrop if it conflicts with the scene.",
-      "Preserve the dish's core identity (primary components and cuisine) while allowing tasteful enhancements for appetite appeal. You may freshen wilted elements, add minimal garnish consistent with the cuisine, subtly increase moisture/juiciness, add gentle glaze/sheens, crisp edges, slight melting/stretch where plausible, re-stack or tidy arrangement, and adjust sauce quantity/placement. Do not invent new major components or change the dish type.",
-      `Camera and angle: ${effectiveLensLook} look, slightly elevated 45° or eye-level depending on what best flatters the dish. Shallow depth of field with natural, believable bokeh.`,
-      "Camera geometry: Adopt the environment's horizon line (eye level) and principal vanishing points. Match camera pitch, yaw and roll to image 2. If the requested lens look conflicts, prioritize matching the environment field-of-view.",
-      "Projection consistency: Render the serving vessel or support surface with correct projection—ellipse for rims/tops and cylinders for glasses/bowls—whose minor/major axis ratio matches camera height. For flat foods (e.g., pizzas, toasts, pastries), align the top plane and edges to the environment's vanishing directions. Align utensil foreshortening with those directions as well.",
-      backgroundDataUrl
-        ? "Physical placement: Place the subject (and its serving vessel if present) on the nearest table plane in image 2 at realistic scale. Align the vessel rim/top and any straight edges to the environment perspective."
-        : "Physical placement: Place the subject (and its serving vessel if present) on a plausible tabletop consistent with the scene, aligned to perspective.",
-      "Surface contact: The base of the serving vessel or the subject itself must be flush with the tabletop with no visible gap. Add an ambient-occlusion ring at contact, darkest near the base and fading out.",
-      "Occlusion: The subject/vessel must occlude any table grain/seams directly beneath it (no visible lines passing through).",
-      "Environment preservation: Do not alter environment geometry. Straight lines remain straight; table plank seams, tile grout and window frames keep their perspective and spacing. Only add occlusion, contact shadows and, if applicable, soft reflections.",
-      "Projective constraint: Parallel lines on the table must converge to the same vanishing point with no local warping or curvature. Do not bend or misalign seams around the subject; simply interrupt them at occlusion and continue beyond.",
-      backgroundDataUrl
-        ? "Lighting and integration: Match the environment's light direction and color temperature. Add grounded contact shadows directly under the plate and utensil, with soft penumbra and physically plausible offset. Add subtle reflections only if the surface is glossy."
-        : "Lighting: Soft, directional light with gentle fill; clean, diffused highlights; avoid harsh specular hotspots. Add realistic contact shadows for depth.",
-      "Depth of field: Keep the subject tack-sharp; background bokeh must be consistent with the lens. Avoid cutout halos or pasted edges; integrate rim micro-shadows to eliminate sticker-like appearance. Shadows and AO must preserve underlying line straightness (multiplicative darkening only, no smearing).",
-      "Color and tone: Clean, appetizing grading with accurate whites and neutral grays; gentle contrast; avoid sickly color casts (excessive green/yellow). Minimal noise and grain.",
-      "Composition: Commercial hero presentation—rule of thirds or strong center; use negative space for copy. Keep framing clean with minimal, coherent props only if they support the dish story.",
-      "Props and styling: Optional minimal props (linen, utensil, ingredient sprinkle) placed to lead the eye toward the hero without clutter. Garnish should be fresh, not wilted.",
-      "Material realism (dish-agnostic): Respect inherent materials—crisp textures stay crisp, sauces remain glossy not plastic, bread/crumbs show irregular pores, meats show rendered fat sheen, fruits/greens show subtle translucency. For liquids, include natural meniscus and, for glassware, realistic refraction and soft reflections.",
-      "Appetite appeal (dish-agnostic): Emphasize crisp-vs-creamy contrasts, natural gloss on sauces/oils (not plastic), juicy highlights, and soft translucency where appropriate. Include small, fresh garnishes with believable moisture and color. Avoid desaturation; keep vibrant yet natural hues.",
-      "Ad aesthetic: Crisp hero focus, controlled specular highlights on glazes and oils, no greasy glare. Steam only if realistic and subtle.",
-      "Negative guidance: No floating dishes, no soft ghost edges, no duplicated plates/utensils, no drop-shadow style effects, no mismatch in perspective or lighting.",
-      prompt && prompt.trim().length > 0
-        ? `Tastefully incorporate this user style hint as soft guidance only: “${prompt}”.`
-        : "",
-      (aspectRatio ? `Target aspect ratio: ${aspectRatio}. Keep composition within this frame.` : undefined),
-      "Output intent: Photorealistic, print-ready quality. For social, prefer 4:5 portrait or 1:1 square crops with safe margins for overlays; otherwise 3:2."
-    ].filter(Boolean).join(" ");
+        ? "- Image A: the dish (subject). - Image B: the target environment/background."
+        : "- Image A: the dish (subject). - No background is provided; generate a plausible environment consistent with instructions.",
+      dishSpecSnippet ? dishSpecSnippet : "",
+      "Task:",
+      "1) Extract ONLY the edible dish (and, if 'Preserve plate' is enabled, its original plate/vessel) from Image A with precise edges and natural rim micro‑shadows.",
+      preservePlate
+        ? "   - Preserve the original plate/vessel exactly as described in DISH_SPEC.vessel if present."
+        : "   - Do not preserve the original plate/vessel; render a new plate/vessel appropriate to the target environment.",
+      "2) Place the dish on a plausible tabletop plane in the environment.",
+      `3) Camera look must match ${effectiveLensLook} (authoritative). Reflect its field of view, perspective, and depth of field.`,
+      aspectRatio ? `4) Output aspect ratio: ${aspectRatio}.` : "",
+      "5) Lighting: match direction, color, and softness to the environment; add realistic contact shadow and ambient occlusion under the plate.",
+      "6) Keep environment geometry straight (tiles, seams) with correct vanishing lines. Do not warp; simply occlude under the dish.",
+      prompt && prompt.trim().length > 0 ? `7) Style hint (soft): ${prompt}` : "",
+      "Output: One cohesive, high‑quality, photorealistic image. No floating subjects, no pasted look, no duplicate plates."
+    ].filter(Boolean).join("\n");
+
+    const narrativeText = compositionTemplate;
+
+    const messagesContent: any[] = [
+      { type: "text", text: narrativeText },
+      { type: "image_url", image_url: { url: dishDataUrl } },
+    ];
+    if (backgroundDataUrl) {
+      messagesContent.push({ type: "image_url", image_url: { url: backgroundDataUrl } });
+    }
 
     const resp = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
       method: "POST",
@@ -80,17 +249,12 @@ export async function POST(request: Request) {
         stream: false,
         // Gateway supports multimodal generation via 'modalities'
         modalities: ["text", "image"],
-        temperature: 0.25,
+        temperature: 0,
+        top_p: 0.9,
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: narrativeText },
-              { type: "image_url", image_url: { url: dishDataUrl } },
-              ...(backgroundDataUrl
-                ? [{ type: "image_url", image_url: { url: backgroundDataUrl } } as const]
-                : []),
-            ],
+            content: messagesContent,
           },
         ],
       }),
