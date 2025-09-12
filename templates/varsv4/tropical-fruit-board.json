@@ -16,7 +16,7 @@
   "STAIN_POLICY": "subtle",
   "KEY_DIRECTION": "top",
   "KEY_SOFTNESS": "soft",
-  "VIGNETTE_LEVEL": "low",
+  "VIGNETTE_LEVEL": "none",
   "GLARE_POLICY": "suppress on matte surfaces; allow narrow knife‑edge specular only aligned to key",
   "COLOR_TEMP_K": 5600,
   "FILL_COLOR_TEMP_K": 5600,

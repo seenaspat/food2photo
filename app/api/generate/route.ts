@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import sharp from "sharp";
+import { loadCatalog, resolveBackground } from "../../../lib/backgrounds/catalog.server";
+import { buildCompositionPrompt } from "../../../lib/generation/prompt";
 
 export const runtime = "nodejs";
 
@@ -10,7 +12,6 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const dish = formData.get("dish");
     const background = formData.get("background");
-    const bgPreset = String(formData.get("bgPreset") || "");
     const prompt = String(formData.get("prompt") || "");
     const lensLook = String(formData.get("lensLook") || "");
     const aspectRatio = String(formData.get("aspectRatio") || "");
@@ -20,6 +21,11 @@ export async function POST(request: Request) {
     if (!(dish instanceof File)) {
       return NextResponse.json({ error: "Missing dish file" }, { status: 400 });
     }
+
+    // Prefer explicit bgRef; fallback to legacy bgPreset → bgRef mapping
+    const bgRefRaw = String(formData.get("bgRef") || "");
+    const legacyBgPreset = String(formData.get("bgPreset") || "");
+    const effectiveBgRef = bgRefRaw || (legacyBgPreset ? `v3-ambience:${legacyBgPreset}` : "");
 
     // Prototype: call Google Generative AI via Vercel AI Gateway (OpenAI-compatible API)
     // and request image output. Send the input image as a data URL inside messages.
@@ -43,23 +49,35 @@ export async function POST(request: Request) {
         default: return { w: 1024, h: 1024 };
       }
     })();
-    // Build AR-locked canvas: blurred cover background + sharp contain overlay to avoid bars AND prevent subject crop
-    const coverBgJpg = await sharp(dishOriginalBuffer)
-      .rotate()
-      .resize({ width: canvasDims.w, height: canvasDims.h, fit: "cover" })
-      .blur(24)
-      .jpeg({ quality: 72, mozjpeg: true })
-      .toBuffer();
-    const overlayPng = await sharp(dishOriginalBuffer)
-      .rotate()
-      .resize({ width: Math.floor(canvasDims.w * 0.92), height: Math.floor(canvasDims.h * 0.92), fit: "inside", background: { r: 255, g: 255, b: 255, alpha: 0 } })
+    // Build AR-locked canvas: transparent padded contain overlay (no blurred edges)
+    const transparentCanvas = await sharp({
+      create: {
+        width: canvasDims.w,
+        height: canvasDims.h,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
       .png({ compressionLevel: 9 })
       .toBuffer();
-    const canvasJpg = await sharp(coverBgJpg)
-      .composite([{ input: overlayPng, gravity: "center" }])
-      .jpeg({ quality: 80, mozjpeg: true })
+
+    const overlayPng = await sharp(dishOriginalBuffer)
+      .rotate()
+      .resize({
+        width: Math.floor(canvasDims.w * 0.92),
+        height: Math.floor(canvasDims.h * 0.92),
+        fit: "inside",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png({ compressionLevel: 9 })
       .toBuffer();
-    const dishDataUrl = `data:image/jpeg;base64,${canvasJpg.toString("base64")}`;
+
+    const composedPng = await sharp(transparentCanvas)
+      .composite([{ input: overlayPng, gravity: "center" }])
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+
+    const dishDataUrl = `data:image/png;base64,${composedPng.toString("base64")}`;
 
     // Load analysis template (external JSON) if available
     let analysisTemplateJson = "";
@@ -135,7 +153,7 @@ export async function POST(request: Request) {
     }
 
     let backgroundDataUrl: string | null = null;
-    if (!bgPreset && background instanceof File) {
+    if (!effectiveBgRef && background instanceof File) {
       // Compress background to keep payload small as well
       const bgArrayBuffer = await background.arrayBuffer();
       const bgBuffer = Buffer.from(bgArrayBuffer);
@@ -176,71 +194,32 @@ export async function POST(request: Request) {
         cropRule: "Compose with a balanced crop: subject prominent, but leave clear context around it."
       };
     })();
-    // Compose prompt from external generation template
-    let genTemplate = "";
-    try {
-      const genPath = path.join(process.cwd(), "templates", "generation", "compose-v1.md");
-      genTemplate = await readFile(genPath, "utf8");
-    } catch {}
 
-    // If preset: load backgrounds-v3.md template and vars JSON
-    let envSpecBlock = "";
-    if (bgPreset) {
+    // Resolve background preset if provided
+    let resolved: any = null;
+    if (effectiveBgRef) {
       try {
-        const bgTplPath = path.join(process.cwd(), "templates", "backgrounds-v3.md");
-        const bgTpl = await readFile(bgTplPath, "utf8");
-        const presetPath = path.join(process.cwd(), "templates", "varsv3", `${bgPreset}.json`);
-        const presetJson = await readFile(presetPath, "utf8");
-        envSpecBlock = [
-          "BACKGROUND_SPEC:",
-          "Template backgrounds-v3.md (excerpt)",
-          "---",
-          bgTpl.slice(0, 1200),
-          "---",
-          "Vars:",
-          presetJson
-        ].join("\n");
-      } catch {}
+        const catalog = await loadCatalog();
+        resolved = resolveBackground(catalog, effectiveBgRef as any);
+      } catch (e) {
+        if (debug) console.log("[bg] resolve error:", e instanceof Error ? e.message : e);
+      }
     }
 
-    const bgLine = bgPreset
-      ? `Environment preset: ${bgPreset} via backgrounds-v3.md + vars`
+    const bgLine = effectiveBgRef
+      ? `Environment preset: ${effectiveBgRef} via template + vars`
       : (backgroundDataUrl ? "Image B: the target environment/background" : "No background provided; synthesize a plausible environment consistent with restaurant photography");
     const platePolicy = preservePlate ? "AND its original plate/vessel exactly" : "ONLY (render a new plate/vessel suitable to the environment)";
 
-    const filledTemplate = (genTemplate || "")
-      .replaceAll("{{BG_INPUT_LINE}}", bgLine)
-      .replaceAll("{{DISH_SPEC_JSON}}", dishSpecSnippet || "{}")
-      .replaceAll("{{FOCAL_DESC}}", lensMap.focalDesc)
-      .replaceAll("{{DOF_HINT}}", lensMap.dof)
-      .replaceAll("{{SUBJECT_OCC}}", lensMap.subjectOcc)
-      .replaceAll("{{FOV_HINT}}", lensMap.fovHint)
-      .replaceAll("{{CROP_RULE}}", lensMap.cropRule)
-      .replaceAll("{{ASPECT_RATIO}}", aspectRatio || "original")
-      .replaceAll("{{PLATE_POLICY}}", platePolicy)
-      .replaceAll("{{ENV_SPEC_BLOCK}}", envSpecBlock);
-
-    const compositionTemplate = filledTemplate || [
-      "Create a single photorealistic food photograph by combining the provided images.",
-      backgroundDataUrl
-        ? "- Image A: the dish (subject). - Image B: the target environment/background."
-        : "- Image A: the dish (subject). - No background is provided; generate a plausible environment consistent with instructions.",
-      dishSpecSnippet ? dishSpecSnippet : "",
-      "Task:",
-      "1) Extract ONLY the edible dish (and, if 'Preserve plate' is enabled, its original plate/vessel) from Image A with precise edges and natural rim micro‑shadows.",
-      preservePlate
-        ? "   - Preserve the original plate/vessel exactly as described in DISH_SPEC.vessel if present."
-        : "   - Do not preserve the original plate/vessel; render a new plate/vessel appropriate to the target environment.",
-      "2) Place the dish on a plausible tabletop plane in the environment.",
-      `3) Camera look must match ${effectiveLensLook} (authoritative). Reflect its field of view, perspective, and depth of field.`,
-      aspectRatio ? `4) Output aspect ratio: ${aspectRatio}.` : "",
-      "5) Lighting: match direction, color, and softness to the environment; add realistic contact shadow and ambient occlusion under the plate.",
-      "6) Keep environment geometry straight (tiles, seams) with correct vanishing lines. Do not warp; simply occlude under the dish.",
-      prompt && prompt.trim().length > 0 ? `7) Style hint (soft): ${prompt}` : "",
-      "Output: One cohesive, high‑quality, photorealistic image. No floating subjects, no pasted look, no duplicate plates."
-    ].filter(Boolean).join("\n");
-
-    const narrativeText = compositionTemplate;
+    const narrativeText = await buildCompositionPrompt({
+      resolved,
+      bgLine,
+      dishSpecSnippet: dishSpecSnippet || "{}",
+      lensMap,
+      aspectRatio: aspectRatio || "original",
+      platePolicy,
+      userPrompt: prompt,
+    });
 
     const messagesContent: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [
       { type: "text", text: narrativeText },

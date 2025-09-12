@@ -21,7 +21,7 @@ Finish: {SURFACE_FINISH} (matte | honed | satin). Micro‑texture: {MICRO_TEXTUR
 Wear: {WEAR_LEVEL} (pristine | light patina only). Dirt/smudges: FORBIDDEN. Stains/splatters allowed: {STAIN_POLICY} (none | subtle accent only, outside landing zone). No ring outlines, no repeated decal patterns, no procedural tiling seams.
 
 LIGHTING (overhead look)
-Key direction bias: {KEY_DIRECTION} (top | left | right | bottom). Softness: {KEY_SOFTNESS} (very soft / soft / medium). Falloff/vignette: {VIGNETTE_LEVEL}. Polarization/glare control: {GLARE_POLICY} (suppress glare, preserve gentle specular band). Color temp: {COLOR_TEMP_K} K; Fill {FILL_COLOR_TEMP_K} K at −{FILL_EV} EV.
+Key direction bias: {KEY_DIRECTION} (top | left | right | bottom). Softness: {KEY_SOFTNESS} (very soft / soft / medium). Illumination: even across the center — no radial vignette, spotlight, center glow, or gradient patch. Use directional falloff only along the key direction. Polarization/glare control: {GLARE_POLICY} (suppress glare, preserve gentle specular band). Color temp: {COLOR_TEMP_K} K; Fill {FILL_COLOR_TEMP_K} K at −{FILL_EV} EV.
 Shadow style: {SHADOW_STYLE} (soft contact shadows, minimal cast shadow length; avoid ring-like halos).
 
 COLOR & TONE
@@ -60,15 +60,16 @@ REFLECTIONS & SPECULARS
 Reflection level: {REFLECTION_STRENGTH} (low for matte). If present, specular band must be narrow and physically plausible, aligned to key direction only. No rectangular softbox reflections, no horizontal/vertical light bars across the frame, no borders.
 
 COMPOSITION RULES
-Keep landing zone clean and invisible. Do NOT place any item centered to imply the landing zone (no cutting board, tray, plate, glass/acrylic rectangle, chalk circle, rounded square). Maintain {EDGE_CLEAR_MM} mm clear margin from frame edges for major props. Avoid tangents: no prop touching the inferred boundary of the landing zone.
+Keep landing zone clean and invisible. Do NOT place any item centered to imply the landing zone (no cutting board, tray, plate, glass/acrylic rectangle, chalk circle, rounded square). Do NOT imply the landing zone with lighting (no radial gradient/spotlight/vignette). Maintain {EDGE_CLEAR_MM} mm clear margin from frame edges for major props. Avoid tangents: no prop touching the inferred boundary of the landing zone.
 
 NEGATIVE GUIDANCE
-No people, no readable text/logos/numbers/percent labels. Never visualize the landing zone with any box, outline, annotation, or label. No heavy perspective skew (stay 90°). No circular rings or chalk‑like outlines in/around the landing zone. No translucent/opaque overlays (glass/acrylic), no rounded‑rectangle or plate/tray shapes in the center. No UI frames, borders, measurement lines, center guides, or compositional grids drawn into the image. No dirt, greasy smears, or procedural tiling artifacts on wood. No overdone vignette or HDR look. Avoid cloned knots or repeating grain; wood must be natural and clean. Do not place hard mid‑frame seams/creases unless explicitly specified in {SEAM_STYLE}.
+No people, no readable text/logos/numbers/percent labels. Never visualize the landing zone with any box, outline, annotation, or label. No heavy perspective skew (stay 90°). No circular rings or chalk‑like outlines in/around the landing zone. No translucent/opaque overlays (glass/acrylic), no rounded‑rectangle or plate/tray shapes in the center. No UI frames, borders, measurement lines, center guides, or compositional grids drawn into the image. No radial spotlights, vignettes, or center glows of any strength; lighting must remain even across the landing zone. No dirt, greasy smears, or procedural tiling artifacts on wood. Avoid overprocessed/HDR looks. Avoid cloned knots or repeating grain; wood must be natural and clean. Do not place hard mid‑frame seams/creases unless explicitly specified in {SEAM_STYLE}.
 
 REALISM SAFEGUARDS
 - Shadows: single key direction; soft contact only; no duplicate or cross‑direction shadows; no halo rings.
 - Materials: surfaces continuous; seams/grout only per {SEAM_STYLE}; grout width constant; no internal borders or inset frames.
 - Props: every prop must be a real object (textile, board, utensil, herb). Never invent graphic shapes.
+- Lighting realism: center area must not show any circular/elliptical falloff pattern; if any falloff exists it follows the key direction and is linear or planar, not radial.
 - Utensils: lie flat, no float/penetration; realistic rest/contact (e.g., chopsticks on a rest). Light 5–20° angle permissible; not perfectly orthogonal unless intentional.
 - Liquids: level to camera (top‑down); subtle meniscus only; drips are physically plausible tear‑drops with soft AO; no outline rings or vector splines.
 - Scale & occlusion: seeds/grains/cutlery sized realistically; overlap creates proper occlusion and AO; no hovering.

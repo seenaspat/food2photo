@@ -9,7 +9,8 @@
     "gen:bg": "bun scripts/generate-background-from-template.js",
     "gen:bg:all": "bun scripts/generate-backgrounds-batch.js",
     "gen:bg:v3": "bun scripts/generate-backgrounds-batch-v3.js",
-    "gen:bg:v4": "bun scripts/generate-backgrounds-batch-v4.js"
+    "gen:bg:v4": "bun scripts/generate-backgrounds-batch-v4.js",
+    "build:bg-manifest": "node scripts/build-background-catalog.js"
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.12",
