@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import path from "node:path";
+import { readFile } from "node:fs/promises";
+import sharp from "sharp";
+import { loadCatalog, resolveBackground } from "../../../lib/backgrounds/catalog.server";
+import { buildCompositionPrompt } from "../../../lib/generation/prompt";
 
 export const runtime = "nodejs";
 
@@ -10,10 +15,17 @@ export async function POST(request: Request) {
     const prompt = String(formData.get("prompt") || "");
     const lensLook = String(formData.get("lensLook") || "");
     const aspectRatio = String(formData.get("aspectRatio") || "");
+    const preservePlate = String(formData.get("preservePlate") || "0") === "1";
+    const debug = (process.env.DEBUG_ANALYSIS === "1") || (() => { try { return new URL(request.url).searchParams.get("debug") === "1"; } catch { return false; }})();
 
     if (!(dish instanceof File)) {
       return NextResponse.json({ error: "Missing dish file" }, { status: 400 });
     }
+
+    // Prefer explicit bgRef; fallback to legacy bgPreset → bgRef mapping
+    const bgRefRaw = String(formData.get("bgRef") || "");
+    const legacyBgPreset = String(formData.get("bgPreset") || "");
+    const effectiveBgRef = bgRefRaw || (legacyBgPreset ? `v3-ambience:${legacyBgPreset}` : "");
 
     // Prototype: call Google Generative AI via Vercel AI Gateway (OpenAI-compatible API)
     // and request image output. Send the input image as a data URL inside messages.
@@ -23,51 +35,199 @@ export async function POST(request: Request) {
     }
 
     const dishArrayBuffer = await dish.arrayBuffer();
-    const dishBase64 = Buffer.from(dishArrayBuffer).toString("base64");
-    const dishMediaType = dish.type || "image/jpeg";
-    const dishDataUrl = `data:${dishMediaType};base64,${dishBase64}`;
+    const dishOriginalBuffer = Buffer.from(new Uint8Array(dishArrayBuffer));
+    // Create AR-locked canvas with the dish centered (single reference image with target aspect)
+    // Reduce dimensions and use JPEG to keep the request body small and avoid 413 from the gateway
+    const canvasDims = (() => {
+      // Max long edge ~1280px to keep payloads small
+      switch (aspectRatio) {
+        case "1:1": return { w: 1024, h: 1024 };
+        case "4:5": return { w: 1024, h: 1280 };
+        case "3:2": return { w: 1200, h: 800 };
+        case "16:9": return { w: 1280, h: 720 };
+        case "9:16": return { w: 720, h: 1280 };
+        default: return { w: 1024, h: 1024 };
+      }
+    })();
+    // Build AR-locked canvas: transparent padded contain overlay (no blurred edges)
+    const transparentCanvas = await sharp({
+      create: {
+        width: canvasDims.w,
+        height: canvasDims.h,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
 
-    let backgroundDataUrl: string | null = null;
-    if (background instanceof File) {
-      const bgArrayBuffer = await background.arrayBuffer();
-      const bgBase64 = Buffer.from(bgArrayBuffer).toString("base64");
-      const bgMediaType = background.type || "image/jpeg";
-      backgroundDataUrl = `data:${bgMediaType};base64,${bgBase64}`;
+    const overlayPng = await sharp(dishOriginalBuffer)
+      .rotate()
+      .resize({
+        width: Math.floor(canvasDims.w * 0.92),
+        height: Math.floor(canvasDims.h * 0.92),
+        fit: "inside",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+
+    const composedPng = await sharp(transparentCanvas)
+      .composite([{ input: overlayPng, gravity: "center" }])
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+
+    const dishDataUrl = `data:image/png;base64,${composedPng.toString("base64")}`;
+
+    // Load analysis template (external JSON) if available
+    let analysisTemplateJson = "";
+    try {
+      const analysisPath = path.join(process.cwd(), "templates", "analysis", "dish-spec-template-v1.json");
+      const raw = await readFile(analysisPath, "utf8");
+      analysisTemplateJson = raw;
+    } catch {}
+
+    // First pass: analyze dish → JSON spec (strict)
+    const analysisPrompt = [
+      "Analyze Image A (the dish) and return a strict JSON object describing it.",
+      analysisTemplateJson ? `Use this JSON schema and fill plausible values only: ${analysisTemplateJson}` : "Return a compact JSON with fields described below.",
+      !analysisTemplateJson ? "Fields:" : "",
+      !analysisTemplateJson ? "- name, category, cuisine, course" : "",
+      !analysisTemplateJson ? "- components[] with role,name,prep,cut,count,approx_size_mm,color,texture,gloss,translucency,must_preserve" : "",
+      !analysisTemplateJson ? "- arrangement (serving_state, layer_order with coverage_pct & thickness_mm, footprint shape/dimensions, repeated_units)" : "",
+      !analysisTemplateJson ? "- vessel (type, material, color, finish, shape, rim_profile, diameter_cm, depth_cm, liner)" : "",
+      !analysisTemplateJson ? "- sauces[], garnish[], base_area, optics, temperature" : "",
+      !analysisTemplateJson ? "- approximate_scale, camera_hint, constraints, category_addons (optional)" : "",
+      "Return JSON only. No prose.",
+    ].filter(Boolean).join("\n");
+
+    const analysisResp = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        stream: false,
+        modalities: ["text", "image"],
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: analysisPrompt },
+              { type: "image_url", image_url: { url: dishDataUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+    if (debug) console.log("[analysis] status:", analysisResp.status, analysisResp.statusText);
+
+    let dishSpec: unknown = null;
+    if (analysisResp.ok) {
+      type ChatCompletion = {
+        choices: Array<{
+          message?: { content?: unknown }
+        }>
+      };
+      const analysisJson = (await analysisResp.json()) as ChatCompletion;
+      const content = analysisJson?.choices?.[0]?.message?.content as unknown;
+      const text = typeof content === "string" ? content : (Array.isArray(content) ? (content as Array<{ text?: string }>)[0]?.text : undefined);
+      if (debug) {
+        const preview = typeof text === "string" ? text.slice(0, 1200) : "<non-text content>";
+        console.log("[analysis] raw content (trunc):", preview);
+      }
+      if (typeof text === "string") {
+        try { dishSpec = JSON.parse(text); } catch {}
+      }
+    } else if (debug) {
+      try { console.log("[analysis] error:", await analysisResp.text()); } catch {}
     }
 
-    const effectiveLensLook = lensLook && lensLook.trim().length > 0 ? lensLook : "50mm prime lens";
-    const narrativeText = [
-      backgroundDataUrl
-        ? "Image 1 = dish reference only. Image 2 = environment. Discard all of image 1's background/table/lighting and re-render a single cohesive commercial food photograph that merges the subject into the environment. Do not paste or superimpose."
-        : "Using the provided image as the dish reference, re-render a single cohesive commercial food photograph; do not keep the original backdrop if it conflicts with the scene.",
-      "Preserve the dish's core identity (primary components and cuisine) while allowing tasteful enhancements for appetite appeal. You may freshen wilted elements, add minimal garnish consistent with the cuisine, subtly increase moisture/juiciness, add gentle glaze/sheens, crisp edges, slight melting/stretch where plausible, re-stack or tidy arrangement, and adjust sauce quantity/placement. Do not invent new major components or change the dish type.",
-      `Camera and angle: ${effectiveLensLook} look, slightly elevated 45° or eye-level depending on what best flatters the dish. Shallow depth of field with natural, believable bokeh.`,
-      "Camera geometry: Adopt the environment's horizon line (eye level) and principal vanishing points. Match camera pitch, yaw and roll to image 2. If the requested lens look conflicts, prioritize matching the environment field-of-view.",
-      "Projection consistency: Render the serving vessel or support surface with correct projection—ellipse for rims/tops and cylinders for glasses/bowls—whose minor/major axis ratio matches camera height. For flat foods (e.g., pizzas, toasts, pastries), align the top plane and edges to the environment's vanishing directions. Align utensil foreshortening with those directions as well.",
-      backgroundDataUrl
-        ? "Physical placement: Place the subject (and its serving vessel if present) on the nearest table plane in image 2 at realistic scale. Align the vessel rim/top and any straight edges to the environment perspective."
-        : "Physical placement: Place the subject (and its serving vessel if present) on a plausible tabletop consistent with the scene, aligned to perspective.",
-      "Surface contact: The base of the serving vessel or the subject itself must be flush with the tabletop with no visible gap. Add an ambient-occlusion ring at contact, darkest near the base and fading out.",
-      "Occlusion: The subject/vessel must occlude any table grain/seams directly beneath it (no visible lines passing through).",
-      "Environment preservation: Do not alter environment geometry. Straight lines remain straight; table plank seams, tile grout and window frames keep their perspective and spacing. Only add occlusion, contact shadows and, if applicable, soft reflections.",
-      "Projective constraint: Parallel lines on the table must converge to the same vanishing point with no local warping or curvature. Do not bend or misalign seams around the subject; simply interrupt them at occlusion and continue beyond.",
-      backgroundDataUrl
-        ? "Lighting and integration: Match the environment's light direction and color temperature. Add grounded contact shadows directly under the plate and utensil, with soft penumbra and physically plausible offset. Add subtle reflections only if the surface is glossy."
-        : "Lighting: Soft, directional light with gentle fill; clean, diffused highlights; avoid harsh specular hotspots. Add realistic contact shadows for depth.",
-      "Depth of field: Keep the subject tack-sharp; background bokeh must be consistent with the lens. Avoid cutout halos or pasted edges; integrate rim micro-shadows to eliminate sticker-like appearance. Shadows and AO must preserve underlying line straightness (multiplicative darkening only, no smearing).",
-      "Color and tone: Clean, appetizing grading with accurate whites and neutral grays; gentle contrast; avoid sickly color casts (excessive green/yellow). Minimal noise and grain.",
-      "Composition: Commercial hero presentation—rule of thirds or strong center; use negative space for copy. Keep framing clean with minimal, coherent props only if they support the dish story.",
-      "Props and styling: Optional minimal props (linen, utensil, ingredient sprinkle) placed to lead the eye toward the hero without clutter. Garnish should be fresh, not wilted.",
-      "Material realism (dish-agnostic): Respect inherent materials—crisp textures stay crisp, sauces remain glossy not plastic, bread/crumbs show irregular pores, meats show rendered fat sheen, fruits/greens show subtle translucency. For liquids, include natural meniscus and, for glassware, realistic refraction and soft reflections.",
-      "Appetite appeal (dish-agnostic): Emphasize crisp-vs-creamy contrasts, natural gloss on sauces/oils (not plastic), juicy highlights, and soft translucency where appropriate. Include small, fresh garnishes with believable moisture and color. Avoid desaturation; keep vibrant yet natural hues.",
-      "Ad aesthetic: Crisp hero focus, controlled specular highlights on glazes and oils, no greasy glare. Steam only if realistic and subtle.",
-      "Negative guidance: No floating dishes, no soft ghost edges, no duplicated plates/utensils, no drop-shadow style effects, no mismatch in perspective or lighting.",
-      prompt && prompt.trim().length > 0
-        ? `Tastefully incorporate this user style hint as soft guidance only: “${prompt}”.`
-        : "",
-      (aspectRatio ? `Target aspect ratio: ${aspectRatio}. Keep composition within this frame.` : undefined),
-      "Output intent: Photorealistic, print-ready quality. For social, prefer 4:5 portrait or 1:1 square crops with safe margins for overlays; otherwise 3:2."
-    ].filter(Boolean).join(" ");
+    let dishSpecSnippet = "";
+    if (dishSpec && typeof dishSpec === "object") {
+      dishSpecSnippet = `DISH_SPEC:\n${JSON.stringify(dishSpec)}`;
+      if (debug) {
+        try { console.log("[analysis] parsed keys:", Object.keys(dishSpec as Record<string, unknown>)); } catch {}
+        console.log("[analysis] dishSpec JSON:", dishSpec);
+      }
+    }
+
+    let backgroundDataUrl: string | null = null;
+    if (!effectiveBgRef && background instanceof File) {
+      // Compress background to keep payload small as well
+      const bgArrayBuffer = await background.arrayBuffer();
+      const bgBuffer = Buffer.from(bgArrayBuffer);
+      const bgCompressed = await sharp(bgBuffer)
+        .rotate()
+        .resize({ width: 1280, height: 1280, fit: "inside" })
+        .jpeg({ quality: 78, mozjpeg: true })
+        .toBuffer();
+      backgroundDataUrl = `data:image/jpeg;base64,${bgCompressed.toString("base64")}`;
+    }
+
+    const effectiveLensLook = lensLook && lensLook.trim().length > 0 ? lensLook : "50mm";
+    const lens = effectiveLensLook.toLowerCase();
+    const lensMap = (() => {
+      if (lens.includes("85")) {
+        return {
+          focalDesc: "85mm / macro portrait look",
+          dof: "shallow",
+          subjectOcc: "55–70%",
+          fovHint: "tight composition; compressed background and strong bokeh",
+          cropRule: "Frame tight on the dish. If needed, zoom or crop so the subject fills most of the frame with minimal surrounding environment."
+        };
+      }
+      if (lens.includes("35")) {
+        return {
+          focalDesc: "35mm wide-normal",
+          dof: "medium",
+          subjectOcc: "28–40%",
+          fovHint: "wider field of view; more environment visible; gentle bokeh",
+          cropRule: "Pull back to include more of the environment around the dish. Keep generous negative space and context."
+        };
+      }
+      return {
+        focalDesc: "50mm natural perspective",
+        dof: "shallow–medium",
+        subjectOcc: "40–55%",
+        fovHint: "balanced FOV; natural background compression",
+        cropRule: "Compose with a balanced crop: subject prominent, but leave clear context around it."
+      };
+    })();
+
+    // Resolve background preset if provided
+    let resolved: any = null;
+    if (effectiveBgRef) {
+      try {
+        const catalog = await loadCatalog();
+        resolved = resolveBackground(catalog, effectiveBgRef as any);
+      } catch (e) {
+        if (debug) console.log("[bg] resolve error:", e instanceof Error ? e.message : e);
+      }
+    }
+
+    const bgLine = effectiveBgRef
+      ? `Environment preset: ${effectiveBgRef} via template + vars`
+      : (backgroundDataUrl ? "Image B: the target environment/background" : "No background provided; synthesize a plausible environment consistent with restaurant photography");
+    const platePolicy = preservePlate ? "AND its original plate/vessel exactly" : "ONLY (render a new plate/vessel suitable to the environment)";
+
+    const narrativeText = await buildCompositionPrompt({
+      resolved,
+      bgLine,
+      dishSpecSnippet: dishSpecSnippet || "{}",
+      lensMap,
+      aspectRatio: aspectRatio || "original",
+      platePolicy,
+      userPrompt: prompt,
+    });
+
+    const messagesContent: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [
+      { type: "text", text: narrativeText },
+      { type: "image_url", image_url: { url: dishDataUrl } },
+    ];
+    if (backgroundDataUrl) {
+      messagesContent.push({ type: "image_url", image_url: { url: backgroundDataUrl } });
+    }
 
     const resp = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
       method: "POST",
@@ -80,19 +240,16 @@ export async function POST(request: Request) {
         stream: false,
         // Gateway supports multimodal generation via 'modalities'
         modalities: ["text", "image"],
-        temperature: 0.25,
+        temperature: 0,
+        top_p: 0.9,
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: narrativeText },
-              { type: "image_url", image_url: { url: dishDataUrl } },
-              ...(backgroundDataUrl
-                ? [{ type: "image_url", image_url: { url: backgroundDataUrl } } as const]
-                : []),
-            ],
+            content: messagesContent,
           },
         ],
+        // Hard cap the server-side request size to avoid 413 on the gateway
+        // by explicitly keeping a compact context (no system/tool messages here)
       }),
     });
 
@@ -103,10 +260,13 @@ export async function POST(request: Request) {
     const json = (await resp.json()) as unknown;
 
     // Narrow the JSON structure to extract base64 image
+    type GatewayResponse = {
+      choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>
+    };
     const images =
       typeof json === "object" && json !== null &&
-      "choices" in json && Array.isArray((json as any).choices) &&
-      (json as any).choices[0]?.message?.images;
+      "choices" in (json as GatewayResponse) && Array.isArray((json as GatewayResponse).choices) &&
+      (json as GatewayResponse).choices?.[0]?.message?.images;
 
     const imageUrl: string | undefined = Array.isArray(images)
       ? images[0]?.image_url?.url
