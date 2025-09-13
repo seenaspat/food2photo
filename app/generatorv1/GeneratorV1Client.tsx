@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X } from "lucide-react";
+import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search } from "lucide-react";
 import {
 	Carousel,
 	CarouselContent,
@@ -17,6 +17,16 @@ import {
 	CarouselPrevious,
 } from "../../components/ui/carousel";
 import { CarouselDots } from "../../components/ui/carousel";
+import { Input } from "@/components/ui/input";
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => clearTimeout(handle);
+  }, [value, delayMs]);
+  return debouncedValue;
+}
 
 interface BackgroundOption {
 	id: string;
@@ -60,6 +70,13 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [selectedTopdownRef, setSelectedTopdownRef] = useState<string | null>(null);
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
 
+	// Search queries for filtering backgrounds
+	const [ambienceQuery, setAmbienceQuery] = useState<string>("");
+	const [topdownQuery, setTopdownQuery] = useState<string>("");
+
+	const ambienceQueryDebounced = useDebouncedValue(ambienceQuery, 300);
+	const topdownQueryDebounced = useDebouncedValue(topdownQuery, 300);
+
 	const backgroundOptions: BackgroundOption[] = useMemo(() => {
 		const opts: BackgroundOption[] = [
 			{ id: "none", label: "No background", thumb: "/opengraph-image.png" },
@@ -93,38 +110,52 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 		return () => URL.revokeObjectURL(url);
 	}, [backgroundUpload]);
 
-	// Split into pages of 3x3 (9 items per page)
+	// Filter ambience backgrounds by query (keeping the "none" option at the top)
+	const filteredBackgroundOptions: BackgroundOption[] = useMemo(() => {
+		const q = ambienceQueryDebounced.trim().toLowerCase();
+		const base = backgroundOptions.find((b) => b.id === "none");
+		const rest = backgroundOptions.filter((b) => b.id !== "none" && (q === "" || b.label.toLowerCase().includes(q)));
+		return base ? [base, ...rest] : rest;
+	}, [backgroundOptions, ambienceQueryDebounced]);
+
+	// Split filtered ambience into pages
 	const backgroundPages = useMemo(() => {
 		const pageSize = 6;
 		const pages: (BackgroundOption | null)[][] = [];
-		const optionsCount = backgroundOptions.length;
+		const optionsCount = filteredBackgroundOptions.length;
 		const pageCount = Math.ceil(optionsCount / pageSize);
 		for (let i = 0; i < pageCount; i++) {
 			const start = i * pageSize;
 			const end = start + pageSize;
-			const page: (BackgroundOption | null)[] = backgroundOptions.slice(start, end);
-			while (page.length < pageSize) pages.push(page);
-			pages.push(page);
-		}
-		if (pages.length === 0) pages.push(Array(9).fill(null));
-		return pages;
-	}, [backgroundOptions]);
-
-	const topdownPages = useMemo(() => {
-		const pageSize = 6;
-		const pages: ({ id: string; label: string; thumbUrl: string } | null)[][] = [];
-		const optionsCount = topdownItems.length;
-		const pageCount = Math.ceil(optionsCount / pageSize);
-		for (let i = 0; i < pageCount; i++) {
-			const start = i * pageSize;
-			const end = start + pageSize;
-			const page: ({ id: string; label: string; thumbUrl: string } | null)[] = topdownItems.slice(start, end);
+			const page: (BackgroundOption | null)[] = filteredBackgroundOptions.slice(start, end);
 			while (page.length < pageSize) page.push(null);
 			pages.push(page);
 		}
 		if (pages.length === 0) pages.push(Array(9).fill(null));
 		return pages;
-	}, [topdownItems]);
+	}, [filteredBackgroundOptions]);
+
+	const filteredTopdownItems = useMemo(() => {
+		const q = topdownQueryDebounced.trim().toLowerCase();
+		if (q === "") return topdownItems;
+		return topdownItems.filter((it) => it.label.toLowerCase().includes(q));
+	}, [topdownItems, topdownQueryDebounced]);
+
+	const topdownPages = useMemo(() => {
+		const pageSize = 6;
+		const pages: ({ id: string; label: string; thumbUrl: string } | null)[][] = [];
+		const optionsCount = filteredTopdownItems.length;
+		const pageCount = Math.ceil(optionsCount / pageSize);
+		for (let i = 0; i < pageCount; i++) {
+			const start = i * pageSize;
+			const end = start + pageSize;
+			const page: ({ id: string; label: string; thumbUrl: string } | null)[] = filteredTopdownItems.slice(start, end);
+			while (page.length < pageSize) page.push(null);
+			pages.push(page);
+		}
+		if (pages.length === 0) pages.push(Array(9).fill(null));
+		return pages;
+	}, [filteredTopdownItems]);
 
 	return (
 		<div className="container mx-auto px-4 py-6">
@@ -176,6 +207,10 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 										<TabsTrigger value="upload">Upload</TabsTrigger>
 									</TabsList>
 									<TabsContent value="ambience">
+										<div className="mb-3 relative">
+											<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+											<Input value={ambienceQuery} onChange={(e) => setAmbienceQuery(e.target.value)} placeholder="Search ambience backgrounds..." className="pl-8" />
+										</div>
 										<Carousel opts={{ align: "start", loop: false }} className="w-full">
 											<div className="flex items-center justify-center gap-4">
 												<CarouselPrevious className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
@@ -215,6 +250,10 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 									</Carousel>
 									</TabsContent>
 									<TabsContent value="topview">
+										<div className="mb-3 relative">
+											<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+											<Input value={topdownQuery} onChange={(e) => setTopdownQuery(e.target.value)} placeholder="Search top view backgrounds..." className="pl-8" />
+										</div>
 										<Carousel opts={{ align: "start", loop: false }} className="w-full">
 											<div className="flex items-center justify-center gap-4">
 												<CarouselPrevious className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
