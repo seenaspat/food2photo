@@ -5,10 +5,9 @@ import FileUpload from "@/components/kokonutui/file-upload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search } from "lucide-react";
+import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info } from "lucide-react";
 import {
 	Carousel,
 	CarouselContent,
@@ -18,6 +17,8 @@ import {
 } from "../../components/ui/carousel";
 import { CarouselDots } from "../../components/ui/carousel";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -64,7 +65,6 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [lens, setLens] = useState<Lens>("85mm/macro");
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
-	const [outputMime, setOutputMime] = useState<string | null>(null);
 	const [aspectRatio, setAspectRatio] = useState<AspectRatioId>("1:1");
 	const [preservePlate, setPreservePlate] = useState<boolean>(false);
 	const [selectedTopdownRef, setSelectedTopdownRef] = useState<string | null>(null);
@@ -201,11 +201,27 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						<CardContent>
 							<div className="w-full">
 								<Tabs defaultValue="ambience" className="w-full">
-									<TabsList>
-										<TabsTrigger value="ambience">Ambience</TabsTrigger>
-										<TabsTrigger value="topview">Top view</TabsTrigger>
-										<TabsTrigger value="upload">Upload</TabsTrigger>
-									</TabsList>
+									<div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+										<TabsList>
+											<TabsTrigger value="ambience">Ambience</TabsTrigger>
+											<TabsTrigger value="topview">Top view</TabsTrigger>
+											<TabsTrigger value="upload">Upload</TabsTrigger>
+										</TabsList>
+										<div className="flex items-center gap-2">
+											<Checkbox id="preservePlate_bg" checked={preservePlate} onCheckedChange={(v) => setPreservePlate(Boolean(v))} />
+											<label htmlFor="preservePlate_bg" className="text-sm">Keep original plate/vessel</label>
+											<Tooltip>
+												<TooltipTrigger asChild>
+													<button aria-label="Plate info" className="inline-flex items-center justify-center size-5 rounded hover:bg-muted">
+														<Info className="h-4 w-4 text-muted-foreground" />
+													</button>
+												</TooltipTrigger>
+												<TooltipContent sideOffset={6}>
+													If off, we may place your dish on a new plate suitable to the environment.
+												</TooltipContent>
+											</Tooltip>
+										</div>
+									</div>
 									<TabsContent value="ambience">
 										<div className="mb-3 relative">
 											<Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -325,69 +341,38 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 
 					<Card>
 						<CardHeader>
-							<CardTitle>3) Optional Style Hint</CardTitle>
+							<CardTitle>3) Style & Output</CardTitle>
 						</CardHeader>
 						<CardContent>
-							<Textarea value={styleHint} onChange={(e) => setStyleHint(e.target.value)} maxLength={250} placeholder="Describe details of the image scenery, style, etc." />
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader>
-							<CardTitle>4) Lens Look</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<div className="grid grid-cols-3 gap-3">
-								{lensOptions.map((opt) => (
-									<button key={opt} onClick={() => setLens(opt)} className="text-left">
-										<Card className={lens === opt ? "border-primary ring-1 ring-primary" : ""}>
-											<CardContent className="p-0">
-												<div className="aspect-square bg-muted/30 flex items-center justify-center">
-													<ImageIcon className="h-8 w-8 text-muted-foreground" />
-												</div>
-												<div className="p-2 text-sm">{opt}</div>
-											</CardContent>
-										</Card>
-									</button>
-								))}
-							</div>
-							<div className="mt-4 flex items-center gap-2">
-								<Checkbox id="preservePlate" checked={preservePlate} onCheckedChange={(v) => setPreservePlate(Boolean(v))} />
-								<Label htmlFor="preservePlate" className="text-sm">Preserve plate</Label>
-							</div>
-						</CardContent>
-					</Card>
-
-					<Card>
-						<CardHeader>
-							<CardTitle>5) Aspect Ratio</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<Carousel opts={{ align: "start", loop: false }} className="w-full">
-								<div className="flex items-center justify-center gap-4">
-									<div className="flex-1 overflow-hidden">
-										<CarouselContent>
+							<div className="space-y-4">
+								<Textarea value={styleHint} onChange={(e) => setStyleHint(e.target.value)} maxLength={250} placeholder="Describe details of the image scenery, style, etc." />
+								<div className="space-y-2">
+									<div className="text-sm font-medium">Lens Look</div>
+									<Tabs value={lens} onValueChange={(v) => setLens(v as Lens)} className="w-full">
+										<TabsList className="grid w-full grid-cols-3">
+											{lensOptions.map((opt) => (
+												<TabsTrigger key={opt} value={opt}>{opt}</TabsTrigger>
+											))}
+										</TabsList>
+									</Tabs>
+								</div>
+								<div className="space-y-2">
+									<div className="text-sm font-medium">Aspect Ratio</div>
+									<Tabs value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatioId)} className="w-full">
+										<TabsList className="grid w-full grid-cols-3 sm:grid-cols-5">
 											{aspectRatioOptions.map((opt) => {
 												const Icon = opt.icon;
 												return (
-													<CarouselItem key={opt.id} className="p-1 basis-1/3 sm:basis-1/4 md:basis-1/5 lg:basis-1/6">
-														<button onClick={() => setAspectRatio(opt.id)} className="text-left w-full">
-															<Card className={aspectRatio === opt.id ? "border-primary ring-1 ring-primary" : ""}>
-																<CardContent className="p-0">
-																	<div className="aspect-square bg-muted/30 flex items-center justify-center">
-																		<Icon className="h-8 w-8 text-muted-foreground" />
-																	</div>
-																	<div className="p-2 text-sm">{opt.label}</div>
-																</CardContent>
-															</Card>
-														</button>
-													</CarouselItem>
-												);
-											})}
-										</CarouselContent>
-									</div>
+													<TabsTrigger key={opt.id} value={opt.id} className="flex items-center gap-2">
+													<Icon className="h-4 w-4" />
+													{opt.label}
+												</TabsTrigger>
+											);
+										})}
+										</TabsList>
+									</Tabs>
 								</div>
-							</Carousel>
+							</div>
 						</CardContent>
 					</Card>
 
@@ -426,7 +411,6 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 								throw new Error(`Generation failed: ${resp.status}${details ? ` - ${details}` : ""}`);
 							}
 							const blob = await resp.blob();
-							setOutputMime(blob.type || null);
 							const url = URL.createObjectURL(blob);
 							setGeneratedImageUrl(url);
 						} catch (e) {
@@ -444,7 +428,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						<CardHeader>
 							<CardTitle className="flex items-center justify-between">
 								<span>Preview</span>
-								<span className="text-xs font-normal text-muted-foreground">Lens: {lens} · Ratio: {aspectRatio}</span>
+								<span className="text-xs font-normal text-muted-foreground flex items-center gap-2">Lens: {lens} · Ratio: {aspectRatio} {preservePlate ? (<Badge variant="secondary">Plate kept</Badge>) : (<Badge variant="outline">Plate may change</Badge>)}</span>
 							</CardTitle>
 						</CardHeader>
 						<CardContent>
