@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info } from "lucide-react";
+import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info, Loader2 } from "lucide-react";
 import {
 	Carousel,
 	CarouselContent,
@@ -69,6 +69,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [preservePlate, setPreservePlate] = useState<boolean>(false);
 	const [selectedTopdownRef, setSelectedTopdownRef] = useState<string | null>(null);
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
+	const [showPreview, setShowPreview] = useState<boolean>(false);
 
 	// Search queries for filtering backgrounds
 	const [ambienceQuery, setAmbienceQuery] = useState<string>("");
@@ -238,14 +239,14 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																	{page.map((bg, itemIndex) =>
 																		bg ? (
 																			<button key={bg.id} onClick={() => { setSelectedBackground(bg.id); setSelectedTopdownRef(null); }} className="text-left">
-																				<Card className={selectedBackground === bg.id ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
-																					<CardContent className="p-0">
-																						<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
-																							{bg.id === "none" ? (
-																								<ImageIcon className="h-8 w-8 text-muted-foreground" />
-																							) : (
-																								<img src={bg.thumb} alt={bg.label} className="h-full w-full object-cover" />
-																							)}
+																			<Card className={selectedBackground === bg.id ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
+																				<CardContent className="p-0">
+																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+																						{bg.id === "none" ? (
+																							<ImageIcon className="h-8 w-8 text-muted-foreground" />
+																						) : (
+																							<img src={bg.thumb} alt={bg.label} className="h-full w-full object-cover" />
+																						)}
 																					</div>
 																					<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{bg.label}</div>
 																				</CardContent>
@@ -254,16 +255,16 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																	) : (
 																		<div key={`placeholder-${pageIndex}-${itemIndex}`} />
 																	)
-															)}
-														</div>
-													</CarouselItem>
+																)}
+															</div>
+														</CarouselItem>
 													))}
 												</CarouselContent>
 											</div>
 											<CarouselNext className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
-										</div>
-										<CarouselDots count={backgroundPages.length} className="mt-4" />
-									</Carousel>
+											</div>
+											<CarouselDots count={backgroundPages.length} className="mt-4" />
+										</Carousel>
 									</TabsContent>
 									<TabsContent value="topview">
 										<div className="mb-3 relative">
@@ -281,15 +282,15 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																	{page.map((it, itemIndex) =>
 																		it ? (
 																			<button key={it.id} onClick={() => { const ref = `v4-topdown:${it.id}`; setSelectedTopdownRef(ref); setSelectedBackground('none'); }} className="text-left">
-																				<Card className={selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
-																					<CardContent className="p-0">
-																						<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
-																							<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
-																						</div>
-																						<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
-																					</CardContent>
-																				</Card>
-																			</button>
+																			<Card className={selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
+																				<CardContent className="p-0">
+																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+																						<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
+																					</div>
+																					<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
+																				</CardContent>
+																			</Card>
+																		</button>
 																	) : (
 																		<div key={`placeholder-${pageIndex}-${itemIndex}`} />
 																	)
@@ -300,9 +301,9 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 												</CarouselContent>
 											</div>
 											<CarouselNext className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
-										</div>
-										<CarouselDots count={topdownPages.length} className="mt-4" />
-									</Carousel>
+											</div>
+											<CarouselDots count={topdownPages.length} className="mt-4" />
+										</Carousel>
 									</TabsContent>
 									<TabsContent value="upload">
 										<div className="space-y-3">
@@ -338,10 +339,11 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 							</div>
 						</CardContent>
 					</Card>
-
+				</div>
+				<div className="space-y-4">
 					<Card>
 						<CardHeader>
-							<CardTitle>3) Style & Output</CardTitle>
+							<CardTitle>3) Camera & Style</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<div className="space-y-4">
@@ -364,11 +366,11 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 												const Icon = opt.icon;
 												return (
 													<TabsTrigger key={opt.id} value={opt.id} className="flex items-center gap-2">
-													<Icon className="h-4 w-4" />
-													{opt.label}
-												</TabsTrigger>
-											);
-										})}
+														<Icon className="h-4 w-4" />
+														{opt.label}
+													</TabsTrigger>
+												);
+											})}
 										</TabsList>
 									</Tabs>
 								</div>
@@ -380,6 +382,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						if (!uploaded) return;
 						try {
 							setIsGenerating(true);
+							setShowPreview(true);
 							setGeneratedImageUrl(null);
 							const fd = new FormData();
 							fd.append("dish", uploaded);
@@ -421,41 +424,49 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 					}}>
 						{isGenerating ? "Enhancing..." : "Enhance Photo"}
 					</Button>
-				</div>
 
-				<div className="space-y-4">
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center justify-between">
-								<span>Preview</span>
-								<span className="text-xs font-normal text-muted-foreground flex items-center gap-2">Lens: {lens} · Ratio: {aspectRatio} {preservePlate ? (<Badge variant="secondary">Plate kept</Badge>) : (<Badge variant="outline">Plate may change</Badge>)}</span>
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{generatedImageUrl ? (
-								<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
-							) : (
-								<div className="aspect-square rounded-md border flex items-center justify-center bg-muted">
-									<ImageIcon className="h-10 w-10 text-muted-foreground" />
-								</div>
-							)}
-							<div className="mt-4 flex items-center gap-2">
+					{showPreview && (
+						<Card>
+							<CardHeader>
+								<CardTitle className="flex items-center justify-between">
+									<span>Preview</span>
+									<span className="text-xs font-normal text-muted-foreground flex items-center gap-2">Lens: {lens} · Ratio: {aspectRatio} {preservePlate ? (<Badge variant="secondary">Plate kept</Badge>) : (<Badge variant="outline">Plate may change</Badge>)}</span>
+								</CardTitle>
+							</CardHeader>
+							<CardContent>
 								{generatedImageUrl ? (
-									<a href={generatedImageUrl} download className="inline-flex">
-										<Button className="gap-2" asChild>
-											<span>
-												<Download className="h-4 w-4" /> Download
+									<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
+								) : (
+									<div className="w-full">
+										<div className="aspect-square w-full rounded-md border bg-muted animate-pulse" />
+										<div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+											<Loader2 className="h-4 w-4 animate-spin" />
+											<span>Generating...</span>
+										</div>
+										<div className="mt-2 space-y-2">
+											<div className="h-3 w-1/3 rounded bg-muted animate-pulse" />
+											<div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
+										</div>
+									</div>
+								)}
+								<div className="mt-4 flex items-center gap-2">
+									{generatedImageUrl ? (
+										<a href={generatedImageUrl} download className="inline-flex">
+											<Button className="gap-2" asChild>
+												<span>
+													<Download className="h-4 w-4" /> Download
 												</span>
 											</Button>
 										</a>
 									) : (
-									<Button className="gap-2" disabled>
-										<Download className="h-4 w-4" /> Download
-									</Button>
-								)}
-							</div>
-						</CardContent>
-					</Card>
+										<Button className="gap-2" disabled>
+											<Download className="h-4 w-4" /> Download
+										</Button>
+									)}
+								</div>
+							</CardContent>
+						</Card>
+					)}
 				</div>
 			</div>
 		</div>
