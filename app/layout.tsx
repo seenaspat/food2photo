@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
+import SiteNavbar from "@/components/site-navbar";
+import SiteFooter from "@/components/site-footer";
+import CookieBanner from "@/components/cookie-banner";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -33,7 +36,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <SiteNavbar />
           {children}
+          <SiteFooter />
+          <CookieBanner />
         </ThemeProvider>
       </body>
     </html>
