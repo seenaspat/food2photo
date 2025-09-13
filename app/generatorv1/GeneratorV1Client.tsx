@@ -95,7 +95,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 
 	// Split into pages of 3x3 (9 items per page)
 	const backgroundPages = useMemo(() => {
-		const pageSize = 9;
+		const pageSize = 6;
 		const pages: (BackgroundOption | null)[][] = [];
 		const optionsCount = backgroundOptions.length;
 		const pageCount = Math.ceil(optionsCount / pageSize);
@@ -111,7 +111,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	}, [backgroundOptions]);
 
 	const topdownPages = useMemo(() => {
-		const pageSize = 9;
+		const pageSize = 6;
 		const pages: ({ id: string; label: string; thumbUrl: string } | null)[][] = [];
 		const optionsCount = topdownItems.length;
 		const pageCount = Math.ceil(optionsCount / pageSize);
@@ -169,13 +169,13 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						</CardHeader>
 						<CardContent>
 							<div className="w-full">
-								<Tabs defaultValue="gallery" className="w-full">
+								<Tabs defaultValue="ambience" className="w-full">
 									<TabsList>
-										<TabsTrigger value="gallery">Gallery</TabsTrigger>
+										<TabsTrigger value="ambience">Ambience</TabsTrigger>
 										<TabsTrigger value="topview">Top view</TabsTrigger>
 										<TabsTrigger value="upload">Upload</TabsTrigger>
 									</TabsList>
-									<TabsContent value="gallery">
+									<TabsContent value="ambience">
 										<Carousel opts={{ align: "start", loop: false }} className="w-full">
 											<div className="flex items-center justify-center gap-4">
 												<CarouselPrevious className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
@@ -196,7 +196,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																								<img src={bg.thumb} alt={bg.label} className="h-full w-full object-cover" />
 																							)}
 																					</div>
-																					<div className="p-2 text-sm leading-5 h-10 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{bg.label}</div>
+																					<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{bg.label}</div>
 																				</CardContent>
 																			</Card>
 																		</button>
@@ -231,7 +231,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																						<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
 																							<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
 																						</div>
-																						<div className="p-2 text-sm leading-5 h-10 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
+																						<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
 																					</CardContent>
 																				</Card>
 																			</button>

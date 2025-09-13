@@ -49,35 +49,32 @@ export async function POST(request: Request) {
         default: return { w: 1024, h: 1024 };
       }
     })();
-    // Build AR-locked canvas: transparent padded contain overlay (no blurred edges)
-    const transparentCanvas = await sharp({
-      create: {
-        width: canvasDims.w,
-        height: canvasDims.h,
-        channels: 4,
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      },
-    })
-      .png({ compressionLevel: 9 })
+    // Build AR-locked canvas without alpha: blurred-cover background + centered contain overlay
+    const blurredCoverJpeg = await sharp(dishOriginalBuffer)
+      .rotate()
+      .resize({ width: canvasDims.w, height: canvasDims.h, fit: "cover" })
+      .blur(12)
+      .modulate({ brightness: 1.0, saturation: 0.95 })
+      .jpeg({ quality: 82, mozjpeg: true })
       .toBuffer();
 
-    const overlayPng = await sharp(dishOriginalBuffer)
+    const overlayJpeg = await sharp(dishOriginalBuffer)
       .rotate()
       .resize({
         width: Math.floor(canvasDims.w * 0.92),
         height: Math.floor(canvasDims.h * 0.92),
         fit: "inside",
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
+        background: { r: 0, g: 0, b: 0 },
       })
-      .png({ compressionLevel: 9 })
+      .jpeg({ quality: 90, mozjpeg: true })
       .toBuffer();
 
-    const composedPng = await sharp(transparentCanvas)
-      .composite([{ input: overlayPng, gravity: "center" }])
-      .png({ compressionLevel: 9 })
+    const composedJpeg = await sharp(blurredCoverJpeg)
+      .composite([{ input: overlayJpeg, gravity: "center" }])
+      .jpeg({ quality: 88, mozjpeg: true })
       .toBuffer();
 
-    const dishDataUrl = `data:image/png;base64,${composedPng.toString("base64")}`;
+    const dishDataUrl = `data:image/jpeg;base64,${composedJpeg.toString("base64")}`;
 
     // Load analysis template (external JSON) if available
     let analysisTemplateJson = "";

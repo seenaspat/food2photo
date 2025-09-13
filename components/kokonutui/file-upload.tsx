@@ -588,7 +588,18 @@ export default function FileUpload({
                                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
                                                 Drag and drop or
                                             </h3>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={triggerFileInput}
+                                            className="w-4/5 flex items-center justify-center gap-2 rounded-lg bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-sm font-semibold text-gray-900 dark:text-white transition-all duration-200 hover:bg-gray-200 dark:hover:bg-white/20 group"
+                                        >
+                                            <span>Upload File</span>
+                                            <UploadCloud className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
+                                        </button>
+
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
                                                 {acceptedFileTypes?.length
                                                     ? `${acceptedFileTypes
                                                           .map(
@@ -605,20 +616,6 @@ export default function FileUpload({
                                                         maxFileSize
                                                     )}`}
                                             </p>
-                                        </div>
-
-                                        <button
-                                            type="button"
-                                            onClick={triggerFileInput}
-                                            className="w-4/5 flex items-center justify-center gap-2 rounded-lg bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-sm font-semibold text-gray-900 dark:text-white transition-all duration-200 hover:bg-gray-200 dark:hover:bg-white/20 group"
-                                        >
-                                            <span>Upload File</span>
-                                            <UploadCloud className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
-                                        </button>
-
-                                        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                                            or drag and drop your file here
-                                        </p>
 
                                         <input
                                             ref={fileInputRef}
