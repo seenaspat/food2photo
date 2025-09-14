@@ -169,7 +169,7 @@ export async function POST(request: Request) {
         return {
           focalDesc: "85mm / macro portrait look",
           dof: "shallow",
-          subjectOcc: "55–70%",
+          subjectOcc: "70–80%",
           fovHint: "tight composition; compressed background and strong bokeh",
           cropRule: "Frame tight on the dish. If needed, zoom or crop so the subject fills most of the frame with minimal surrounding environment."
         };
@@ -178,7 +178,7 @@ export async function POST(request: Request) {
         return {
           focalDesc: "35mm wide-normal",
           dof: "medium",
-          subjectOcc: "28–40%",
+          subjectOcc: "15–30%",
           fovHint: "wider field of view; more environment visible; gentle bokeh",
           cropRule: "Pull back to include more of the environment around the dish. Keep generous negative space and context."
         };
@@ -186,14 +186,15 @@ export async function POST(request: Request) {
       return {
         focalDesc: "50mm natural perspective",
         dof: "shallow–medium",
-        subjectOcc: "40–55%",
+        subjectOcc: "40–50%",
         fovHint: "balanced FOV; natural background compression",
         cropRule: "Compose with a balanced crop: subject prominent, but leave clear context around it."
       };
     })();
 
-    // Resolve background preset if provided
+    // Resolve background preset if provided; otherwise fall back to a neutral default when no upload
     let resolved: any = null;
+    let usedFallbackNoBgPreset = false;
     if (effectiveBgRef) {
       try {
         const catalog = await loadCatalog();
@@ -201,11 +202,41 @@ export async function POST(request: Request) {
       } catch (e) {
         if (debug) console.log("[bg] resolve error:", e instanceof Error ? e.message : e);
       }
+    } else if (!backgroundDataUrl) {
+      // No preset and no uploaded background → use a default, neutral v3 template+vars
+      try {
+        const templateAbsPath = path.join(process.cwd(), "templates", "backgrounds-v3.md");
+        const varsAbsPath = path.join(process.cwd(), "templates", "varsv3", "no-background-default.json");
+        resolved = {
+          family: {
+            id: "v3-ambience",
+            label: "Ambience Presets",
+            integration: { type: "template_vars", templatePath: "templates/backgrounds-v3.md", varsDir: "templates/varsv3" },
+            styleProfile: "ambience",
+          },
+          item: {
+            id: "no-background-default",
+            label: "No background (default)",
+            familyId: "v3-ambience",
+            thumbUrl: "/opengraph-image.png",
+            payload: { type: "template_vars", varsFile: "no-background-default.json" },
+          },
+          templateAbsPath,
+          varsAbsPath,
+        };
+        usedFallbackNoBgPreset = true;
+      } catch (e) {
+        if (debug) console.log("[bg] fallback preset error:", e instanceof Error ? e.message : e);
+      }
     }
 
     const bgLine = effectiveBgRef
       ? `Environment preset: ${effectiveBgRef} via template + vars`
-      : (backgroundDataUrl ? "Image B: the target environment/background" : "No background provided; synthesize a plausible environment consistent with restaurant photography");
+      : (backgroundDataUrl
+        ? "Image B: the target environment/background"
+        : (usedFallbackNoBgPreset
+          ? "Environment preset: v3-ambience:no-background-default via template + vars"
+          : "No background provided; synthesize a plausible environment consistent with restaurant and dish photography"));
     const platePolicy = preservePlate ? "AND its original plate/vessel exactly" : "ONLY (render a new plate/vessel suitable to the environment)";
 
     const narrativeText = await buildCompositionPrompt({
