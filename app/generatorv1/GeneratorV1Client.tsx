@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import FileUpload from "@/components/kokonutui/file-upload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,20 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [selectedTopdownRef, setSelectedTopdownRef] = useState<string | null>(null);
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
 	const [showPreview, setShowPreview] = useState<boolean>(false);
+	const [creditBalance, setCreditBalance] = useState<number | null>(null);
+
+	const refreshBalance = useCallback(async () => {
+		try {
+			const resp = await fetch("/api/billing/balance", { method: "GET", cache: "no-store" });
+			if (!resp.ok) return;
+			const json = await resp.json();
+			setCreditBalance(typeof json.balance === "number" ? json.balance : Number(json.balance ?? 0));
+		} catch {}
+	}, []);
+
+	useEffect(() => {
+		void refreshBalance();
+	}, []);
 
 	// Search queries for filtering backgrounds
 	const [ambienceQuery, setAmbienceQuery] = useState<string>("");
@@ -414,6 +428,10 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 							const blob = await resp.blob();
 							const url = URL.createObjectURL(blob);
 							setGeneratedImageUrl(url);
+							try {
+								const headerBal = resp.headers.get("X-Credit-Balance");
+								if (headerBal) setCreditBalance(Number(headerBal));
+							} catch {}
 						} catch (e) {
 							console.error(e);
 						} finally {
@@ -457,6 +475,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 											maxLength={250}
 										/>
 									</div>
+									<div className="mt-2 text-xs text-muted-foreground">{creditBalance !== null ? `Credits: ${creditBalance}` : null}</div>
 									<div className="mt-4 flex items-center justify-between gap-2">
 										<Button variant="secondary" disabled={isRegenerating || variantHint.trim().length === 0}
 											onClick={async () => {
@@ -477,6 +496,11 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 													const url = URL.createObjectURL(blob);
 													try { URL.revokeObjectURL(generatedImageUrl); } catch {}
 													setGeneratedImageUrl(url);
+													setVariantHint("");
+													try {
+														const headerBal = resp.headers.get("X-Credit-Balance");
+														if (headerBal) setCreditBalance(Number(headerBal));
+													} catch {}
 												} catch (e) {
 													console.error(e);
 												} finally {
