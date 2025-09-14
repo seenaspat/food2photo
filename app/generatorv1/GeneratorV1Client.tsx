@@ -63,6 +63,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [lens, setLens] = useState<Lens>("85mm/macro");
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+	const [variantHint, setVariantHint] = useState<string>("");
+	const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
 	const [aspectRatio, setAspectRatio] = useState<AspectRatioId>("1:1");
 	const [preservePlate, setPreservePlate] = useState<boolean>(false);
 	const [selectedTopdownRef, setSelectedTopdownRef] = useState<string | null>(null);
@@ -430,23 +432,59 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
-								{generatedImageUrl ? (
-									<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
-								) : (
+								{(isRegenerating || !generatedImageUrl) ? (
 									<div className="w-full">
 										<div className="aspect-square w-full rounded-md border bg-muted animate-pulse" />
 										<div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
 											<Loader2 className="h-4 w-4 animate-spin" />
-											<span>Generating...</span>
+											<span>{isRegenerating ? "Regenerating..." : "Generating..."}</span>
 										</div>
 										<div className="mt-2 space-y-2">
 											<div className="h-3 w-1/3 rounded bg-muted animate-pulse" />
 											<div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
 										</div>
 									</div>
+								) : (
+									<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
 								)}
-								<div className="mt-4 flex items-center gap-2">
-									{generatedImageUrl ? (
+								{generatedImageUrl ? (
+								<>
+									<div className="mt-4">
+										<Input
+											value={variantHint}
+											onChange={(e) => setVariantHint(e.target.value)}
+											placeholder="Add a short hint to tweak the image..."
+											maxLength={250}
+										/>
+									</div>
+									<div className="mt-4 flex items-center justify-between gap-2">
+										<Button variant="secondary" disabled={isRegenerating || variantHint.trim().length === 0}
+											onClick={async () => {
+												if (!generatedImageUrl) return;
+												try {
+													setIsRegenerating(true);
+													const baseBlob = await fetch(generatedImageUrl).then((r) => r.blob());
+													const fd = new FormData();
+													fd.append("image", baseBlob, "base.jpg");
+													fd.append("hint", variantHint.trim());
+													const resp = await fetch("/api/variant", { method: "POST", body: fd });
+													if (!resp.ok) {
+														let details = "";
+														try { details = await resp.text(); } catch {}
+														throw new Error(`Variant failed: ${resp.status}${details ? ` - ${details}` : ""}`);
+													}
+													const blob = await resp.blob();
+													const url = URL.createObjectURL(blob);
+													try { URL.revokeObjectURL(generatedImageUrl); } catch {}
+													setGeneratedImageUrl(url);
+												} catch (e) {
+													console.error(e);
+												} finally {
+													setIsRegenerating(false);
+												}
+											}}>
+											{isRegenerating ? "Regenerating..." : "Regenerate"}
+										</Button>
 										<a href={generatedImageUrl} download className="inline-flex">
 											<Button className="gap-2" asChild>
 												<span>
@@ -454,12 +492,15 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 												</span>
 											</Button>
 										</a>
-									) : (
-										<Button className="gap-2" disabled>
-											<Download className="h-4 w-4" /> Download
-										</Button>
-									)}
+									</div>
+								</>
+							) : (
+								<div className="mt-4 flex items-center gap-2">
+									<Button className="gap-2" disabled>
+										<Download className="h-4 w-4" /> Download
+									</Button>
 								</div>
+							)}
 							</CardContent>
 						</Card>
 					)}
