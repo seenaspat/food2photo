@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 
 export function SignUpForm({
   className,
@@ -44,7 +45,7 @@ export function SignUpForm({
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/protected`,
+          emailRedirectTo: `${window.location.origin}/generatorv1`,
         },
       });
       if (error) throw error;
@@ -113,6 +114,9 @@ export function SignUpForm({
               </Link>
             </div>
           </form>
+          <div className="mt-4">
+            <GoogleSignInButton label="Sign up with Google" />
+          </div>
         </CardContent>
       </Card>
     </div>

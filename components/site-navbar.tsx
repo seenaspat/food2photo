@@ -13,6 +13,7 @@ import {
   NavigationMenuViewport,
 } from "@/components/ui/navigation-menu";
 import { Button } from "@/components/ui/button";
+import { AuthMenuClient } from "@/components/auth-menu-client";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export function SiteNavbar() {
@@ -41,14 +42,7 @@ export function SiteNavbar() {
           </div>
         </div>
 
-        <div className="hidden items-center gap-2 md:flex">
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/auth/login">Log in</Link>
-          </Button>
-          <Button asChild size="sm">
-            <Link href="/auth/sign-up">Sign up</Link>
-          </Button>
-        </div>
+        <AuthMenuClient />
 
         <div className="md:hidden">
           <Sheet>
@@ -66,12 +60,7 @@ export function SiteNavbar() {
                   <Link href="/pricing">Pricing</Link>
                 </Button>
                 <div className="h-px bg-border my-2" />
-                <Button asChild variant="ghost" className="justify-start">
-                  <Link href="/auth/login">Log in</Link>
-                </Button>
-                <Button asChild className="justify-start">
-                  <Link href="/auth/sign-up">Sign up</Link>
-                </Button>
+                <AuthMenuClient mobile />
               </nav>
             </SheetContent>
           </Sheet>
