@@ -5,7 +5,6 @@ import FileUpload from "@/components/kokonutui/file-upload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info, Loader2 } from "lucide-react";
 import {
@@ -61,7 +60,6 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [selectedBackground, setSelectedBackground] = useState<string | null>("none");
 	const [backgroundUpload, setBackgroundUpload] = useState<File | null>(null);
 	const [backgroundPreviewUrl, setBackgroundPreviewUrl] = useState<string | null>(null);
-	const [styleHint, setStyleHint] = useState<string>();
 	const [lens, setLens] = useState<Lens>("85mm/macro");
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
@@ -347,7 +345,6 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						</CardHeader>
 						<CardContent>
 							<div className="space-y-4">
-								<Textarea value={styleHint} onChange={(e) => setStyleHint(e.target.value)} maxLength={250} placeholder="Describe details of the image scenery, style, etc." />
 								<div className="space-y-2">
 									<div className="text-sm font-medium">Lens Look</div>
 									<Tabs value={lens} onValueChange={(v) => setLens(v as Lens)} className="w-full">
@@ -397,7 +394,6 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 									fd.append("bgRef", `v3-ambience:${selected.preset}`);
 								}
 							}
-							fd.append("prompt", styleHint ?? "");
 							fd.append("lensLook", lens);
 							fd.append("aspectRatio", aspectRatio);
 							fd.append("preservePlate", preservePlate ? "1" : "0");

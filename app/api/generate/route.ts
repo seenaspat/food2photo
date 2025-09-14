@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { loadCatalog, resolveBackground } from "../../../lib/backgrounds/catalog.server";
+import type { ResolvedBackground, BgRef } from "../../../lib/backgrounds/types";
 import { buildCompositionPrompt } from "../../../lib/generation/prompt";
 
 export const runtime = "nodejs";
@@ -12,7 +13,6 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const dish = formData.get("dish");
     const background = formData.get("background");
-    const prompt = String(formData.get("prompt") || "");
     const lensLook = String(formData.get("lensLook") || "");
     const aspectRatio = String(formData.get("aspectRatio") || "");
     const preservePlate = String(formData.get("preservePlate") || "0") === "1";
@@ -193,12 +193,12 @@ export async function POST(request: Request) {
     })();
 
     // Resolve background preset if provided; otherwise fall back to a neutral default when no upload
-    let resolved: any = null;
+    let resolved: ResolvedBackground | null = null;
     let usedFallbackNoBgPreset = false;
     if (effectiveBgRef) {
       try {
         const catalog = await loadCatalog();
-        resolved = resolveBackground(catalog, effectiveBgRef as any);
+        resolved = resolveBackground(catalog, effectiveBgRef as BgRef);
       } catch (e) {
         if (debug) console.log("[bg] resolve error:", e instanceof Error ? e.message : e);
       }
@@ -246,7 +246,6 @@ export async function POST(request: Request) {
       lensMap,
       aspectRatio: aspectRatio || "original",
       platePolicy,
-      userPrompt: prompt,
     });
 
     const messagesContent: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [
