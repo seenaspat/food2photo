@@ -30,7 +30,6 @@ export interface BuildPromptInput {
 	lensMap: { focalDesc: string; dof: string; subjectOcc: string; fovHint: string; cropRule: string };
 	aspectRatio: string;
 	platePolicy: string;
-	userPrompt: string;
 }
 
 export async function buildCompositionPrompt(input: BuildPromptInput): Promise<string> {
