@@ -5,11 +5,41 @@ import sharp from "sharp";
 import { loadCatalog, resolveBackground } from "../../../lib/backgrounds/catalog.server";
 import type { ResolvedBackground, BgRef } from "../../../lib/backgrounds/types";
 import { buildCompositionPrompt } from "../../../lib/generation/prompt";
+import { createClient } from "../../../lib/supabase/server";
+import { isRateLimited, logApiRequest } from "../../../lib/rate-limit";
+import { reserveCredit, finalizeCredit } from "../../../lib/metering";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const supabase = await createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id ?? null;
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ip = (() => {
+      try { return (request.headers.get('x-forwarded-for') ?? '').split(',')[0] || '0.0.0.0'; } catch { return '0.0.0.0'; }
+    })();
+    const limited = await isRateLimited(supabase, userId, ip, { perMinute: 10, perHour: 200 });
+    await logApiRequest(supabase, userId, ip, "/api/generate");
+    if (limited) {
+      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    }
+
+    const requestId = crypto.randomUUID();
+    const reserved = await reserveCredit(supabase, {
+      userId,
+      requestId,
+      apiRoute: "/api/generate",
+      model: "gemini-2.5-flash-image-preview",
+      metadata: {},
+    });
+    if (!reserved) {
+      return NextResponse.json({ error: "Insufficient credits" }, { status: 402 });
+    }
     const formData = await request.formData();
     const dish = formData.get("dish");
     const background = formData.get("background");
@@ -282,6 +312,7 @@ export async function POST(request: Request) {
 
     if (!resp.ok) {
       const errText = await resp.text();
+      await finalizeCredit(supabase, { userId, requestId, success: false });
       return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}` }, { status: 502 });
     }
     const json = (await resp.json()) as unknown;
@@ -300,6 +331,7 @@ export async function POST(request: Request) {
       : undefined;
 
     if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("data:image/")) {
+      await finalizeCredit(supabase, { userId, requestId, success: false });
       return NextResponse.json({ error: "No image produced" }, { status: 502 });
     }
 
@@ -310,14 +342,24 @@ export async function POST(request: Request) {
     const outBuffer = Buffer.from(b64, "base64");
     const outName = outType.includes("jpeg") ? "enhanced.jpg" : outType.includes("png") ? "enhanced.png" : "enhanced.webp";
 
-    return new Response(outBuffer, {
+    // Fetch updated balance and return it in headers to avoid extra client calls
+    let balanceHeader = "";
+    try {
+      const { data: balance } = await supabase.rpc("get_current_credit_balance", { user_id_input: userId });
+      balanceHeader = String(Number(balance ?? 0));
+    } catch {}
+
+    const response = new Response(outBuffer, {
       status: 200,
       headers: {
         "Content-Type": outType,
         "Content-Disposition": `attachment; filename=\"${outName}\"`,
         "Cache-Control": "no-store",
+        ...(balanceHeader ? { "X-Credit-Balance": balanceHeader } : {}),
       },
     });
+    await finalizeCredit(supabase, { userId, requestId, success: true });
+    return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
