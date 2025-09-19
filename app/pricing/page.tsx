@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ArrowRight, BadgeCheck } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const plans = [
@@ -73,6 +73,36 @@ const plans = [
 
 export default function PricingPage() {
   const [frequency, setFrequency] = useState<string>("monthly");
+  const proPlanPriceId = useMemo(() => (frequency === "yearly" ? "pro_yearly" : "pro_monthly"), [frequency]);
+
+  const createCheckout = useCallback(async () => {
+    try {
+      const body = { planCode: proPlanPriceId };
+      const res = await fetch("/api/billing/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Checkout failed");
+      if (json?.url) window.location.href = json.url as string;
+    } catch (e) {
+      console.error(e);
+      alert("Could not start checkout. Please try again.");
+    }
+  }, [proPlanPriceId]);
+
+  const openPortal = useCallback(async () => {
+    try {
+      const res = await fetch("/api/billing/portal", { method: "GET" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Portal failed");
+      if (json?.url) window.location.href = json.url as string;
+    } catch (e) {
+      console.error(e);
+      alert("Could not open billing portal. Please try again.");
+    }
+  }, []);
   return (
     <div className="not-prose flex flex-col gap-16 px-8 py-24 text-center">
       <div className="flex flex-col items-center justify-center gap-8">
@@ -147,16 +177,32 @@ export default function PricingPage() {
                 ))}
               </CardContent>
               <CardFooter>
-                <Button
-                  className="w-full"
-                  variant={plan.popular ? "default" : "secondary"}
-                >
-                  {plan.cta}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                {plan.id === "pro" ? (
+                  <Button
+                    className="w-full"
+                    variant={plan.popular ? "default" : "secondary"}
+                    onClick={createCheckout}
+                  >
+                    {plan.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                ) : plan.id === "hobby" ? (
+                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/auth/sign-up") }>
+                    {plan.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/contact") }>
+                    {plan.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           ))}
+        </div>
+        <div className="mt-2">
+          <Button variant="ghost" onClick={openPortal}>Manage billing</Button>
         </div>
       </div>
     </div>

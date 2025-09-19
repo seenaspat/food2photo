@@ -62,7 +62,8 @@ export async function POST(request: Request) {
         }
         break;
       }
-      case "invoice.paid": {
+      case "invoice.paid":
+      case "invoice.payment_succeeded": {
         const invoice = event.data.object as Stripe.Invoice;
         const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id ?? null;
         if (!subId) break;
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
         const { data: plan } = await supabase.from("billing_plans").select("monthly_token_quota").eq("code", planCode).single();
         const quota = Number(plan?.monthly_token_quota ?? 0);
         if (quota > 0) {
-          await supabase.rpc("grant_tokens", { user_id_input: userId, tokens: quota, reason: "invoice.renewal", metadata: {} });
+          await supabase.rpc("grant_tokens", { user_id_input: userId, tokens: quota, reason: "invoice.renewal", metadata: {}, kind: "subscription" });
         }
         break;
       }

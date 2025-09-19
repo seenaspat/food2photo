@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createServiceRoleClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 
 /**
  * Especially important if using Fluid compute: Don't put this client in a
@@ -34,11 +34,21 @@ export async function createClient() {
   );
 }
 
-export function createServiceClient() {
+/**
+ * Server-side client using the Service Role key. Intended for trusted backend
+ * tasks such as Stripe webhooks. Do not expose the service key to the client.
+ */
+export function createServiceClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error("Missing SUPABASE service role configuration");
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !serviceKey) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
   }
-  return createSupabaseAdminClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+
+  return createServiceRoleClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      headers: { "X-Client-Info": "food2photo-stripe-webhook" },
+    },
+  });
 }
