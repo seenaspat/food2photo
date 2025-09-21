@@ -15,7 +15,7 @@ export async function GET() {
 
     const { data: sub } = await supabase
       .from("user_subscriptions")
-      .select("plan_code, status, current_period_end")
+      .select("plan_code, status, current_period_end, cancel_at_period_end, cancel_at, canceled_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -33,7 +33,13 @@ export async function GET() {
 
     return NextResponse.json({
       balance: Number(balance ?? 0),
-      subscription: sub ? { status: sub.status, renew_at: sub.current_period_end } : null,
+      subscription: sub ? {
+        status: sub.status,
+        renew_at: sub.current_period_end,
+        cancel_at_period_end: sub.cancel_at_period_end,
+        cancel_at: sub.cancel_at,
+        canceled_at: sub.canceled_at,
+      } : null,
       plan,
     });
   } catch (e) {

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { InfoIcon } from "lucide-react";
 import { FetchDataSteps } from "@/components/tutorial/fetch-data-steps";
 import GenerateForm from "@/components/generate-form";
+import { NextResponse } from "next/server";
 
 export default async function ProtectedPage() {
   const supabase = await createClient();
@@ -39,10 +40,41 @@ export default async function ProtectedPage() {
           )}
         </pre>
       </div>
+      <SubscriptionSection />
       <div>
         <h2 className="font-bold text-2xl mb-4">Next steps</h2>
         <FetchDataSteps />
       </div>
+    </div>
+  );
+}
+
+async function SubscriptionSection() {
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const userId = authData.user?.id ?? null;
+  if (!userId) return null;
+  const { data: sub } = await supabase
+    .from("user_subscriptions")
+    .select("plan_code, status, current_period_end")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+  const status = sub?.status as string | undefined;
+  const renewAt = sub?.current_period_end as string | undefined;
+  const planCode = sub?.plan_code as string | undefined;
+  const active = status === "trialing" || status === "active" || status === "past_due";
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="font-bold text-2xl">Subscription</h2>
+      {active ? (
+        <div className="text-sm text-muted-foreground">
+          Plan: {planCode ?? "(unknown)"}. Status: {status}. {renewAt ? `Renews on ${new Date(renewAt).toLocaleDateString()}.` : ""}
+        </div>
+      ) : (
+        <div className="text-sm text-muted-foreground">No active subscription.</div>
+      )}
     </div>
   );
 }

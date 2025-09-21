@@ -13,23 +13,23 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const requestId = crypto.randomUUID();
     const supabase = await createClient();
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id ?? null;
     if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401, headers: { "X-Request-Id": requestId } });
     }
 
     const ip = (() => {
       try { return (request.headers.get('x-forwarded-for') ?? '').split(',')[0] || '0.0.0.0'; } catch { return '0.0.0.0'; }
     })();
-    const limited = await isRateLimited(supabase, userId, ip, { perMinute: 10, perHour: 200 });
+    const limited = await isRateLimited(supabase, userId, ip, { perMinute: 10, perHour: 200 }, "/api/generate");
     await logApiRequest(supabase, userId, ip, "/api/generate");
     if (limited) {
-      return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+      return NextResponse.json({ error: "Rate limit exceeded", requestId }, { status: 429, headers: { "X-Request-Id": requestId } });
     }
 
-    const requestId = crypto.randomUUID();
     const reserved = await reserveCredit(supabase, {
       userId,
       requestId,
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       metadata: {},
     });
     if (!reserved) {
-      return NextResponse.json({ error: "Insufficient credits" }, { status: 402 });
+      return NextResponse.json({ error: "Insufficient credits", requestId }, { status: 402, headers: { "X-Request-Id": requestId } });
     }
     const formData = await request.formData();
     const dish = formData.get("dish");
@@ -49,7 +49,8 @@ export async function POST(request: Request) {
     const debug = (process.env.DEBUG_ANALYSIS === "1") || (() => { try { return new URL(request.url).searchParams.get("debug") === "1"; } catch { return false; }})();
 
     if (!(dish instanceof File)) {
-      return NextResponse.json({ error: "Missing dish file" }, { status: 400 });
+      await finalizeCredit(supabase, { userId, requestId, success: false });
+      return NextResponse.json({ error: "Missing dish file", requestId }, { status: 400, headers: { "X-Request-Id": requestId } });
     }
 
     // Prefer explicit bgRef; fallback to legacy bgPreset → bgRef mapping
@@ -61,7 +62,8 @@ export async function POST(request: Request) {
     // and request image output. Send the input image as a data URL inside messages.
     const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing AI_GATEWAY_API_KEY" }, { status: 500 });
+      await finalizeCredit(supabase, { userId, requestId, success: false });
+      return NextResponse.json({ error: "Missing AI_GATEWAY_API_KEY", requestId }, { status: 500, headers: { "X-Request-Id": requestId } });
     }
 
     const dishArrayBuffer = await dish.arrayBuffer();
@@ -313,7 +315,7 @@ export async function POST(request: Request) {
     if (!resp.ok) {
       const errText = await resp.text();
       await finalizeCredit(supabase, { userId, requestId, success: false });
-      return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}` }, { status: 502 });
+      return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}`, requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
     const json = (await resp.json()) as unknown;
 
@@ -332,7 +334,7 @@ export async function POST(request: Request) {
 
     if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("data:image/")) {
       await finalizeCredit(supabase, { userId, requestId, success: false });
-      return NextResponse.json({ error: "No image produced" }, { status: 502 });
+      return NextResponse.json({ error: "No image produced", requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
 
     const commaIdx = imageUrl.indexOf(",");
@@ -355,6 +357,7 @@ export async function POST(request: Request) {
         "Content-Type": outType,
         "Content-Disposition": `attachment; filename=\"${outName}\"`,
         "Cache-Control": "no-store",
+        "X-Request-Id": requestId,
         ...(balanceHeader ? { "X-Credit-Balance": balanceHeader } : {}),
       },
     });
