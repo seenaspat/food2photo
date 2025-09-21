@@ -30,11 +30,25 @@ export async function GET() {
     const customerId = sub?.stripe_customer_id;
     if (!customerId) return NextResponse.json({ error: "No customer" }, { status: 400 });
 
-    const session = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing`,
-    });
-    return NextResponse.json({ url: session.url }, { status: 200 });
+    try {
+      const portalConfigId = process.env.STRIPE_BILLING_PORTAL_CONFIGURATION_ID;
+      const params: Stripe.BillingPortal.SessionCreateParams = {
+        customer: customerId,
+        return_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing`,
+      };
+      if (portalConfigId) params.configuration = portalConfigId;
+      const session = await stripe.billingPortal.sessions.create(params);
+      return NextResponse.json({ url: session.url }, { status: 200 });
+    } catch (err) {
+      const isLive = stripeSecret.startsWith("sk_live");
+      const setupUrl = isLive
+        ? "https://dashboard.stripe.com/settings/billing/portal"
+        : "https://dashboard.stripe.com/test/settings/billing/portal";
+      return NextResponse.json(
+        { error: "Stripe Billing Portal not configured. Configure it in the Stripe Dashboard and try again.", setup_url: setupUrl, code: "PORTAL_NOT_CONFIGURED" },
+        { status: 409 },
+      );
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

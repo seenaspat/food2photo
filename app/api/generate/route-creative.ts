@@ -1,9 +1,34 @@
 import { NextResponse } from "next/server";
+import { createClient } from "../../../lib/supabase/server";
+import { isRateLimited, logApiRequest } from "../../../lib/rate-limit";
+import { reserveCredit, finalizeCredit } from "../../../lib/metering";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  let requestId: string = "";
+  let didReserve = false;
+  let currentUserId: string | null = null;
   try {
+    requestId = crypto.randomUUID();
+
+    const supabase = await createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id ?? null;
+    currentUserId = userId;
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401, headers: { "X-Request-Id": requestId } });
+    }
+
+    const ip = (() => {
+      try { return (request.headers.get('x-forwarded-for') ?? '').split(',')[0] || '0.0.0.0'; } catch { return '0.0.0.0'; }
+    })();
+    const limited = await isRateLimited(supabase, userId, ip, { perMinute: 10, perHour: 200 }, "/api/generate/creative");
+    await logApiRequest(supabase, userId, ip, "/api/generate/creative");
+    if (limited) {
+      return NextResponse.json({ error: "Rate limit exceeded", requestId }, { status: 429, headers: { "X-Request-Id": requestId } });
+    }
+
     const formData = await request.formData();
     const dish = formData.get("dish");
     const background = formData.get("background");
@@ -11,12 +36,24 @@ export async function POST(request: Request) {
     const lensLook = String(formData.get("lensLook") || "");
 
     if (!(dish instanceof File)) {
-      return NextResponse.json({ error: "Missing dish file" }, { status: 400 });
+      return NextResponse.json({ error: "Missing dish file", requestId }, { status: 400, headers: { "X-Request-Id": requestId } });
     }
 
     const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing AI_GATEWAY_API_KEY" }, { status: 500 });
+      return NextResponse.json({ error: "Missing AI_GATEWAY_API_KEY", requestId }, { status: 500, headers: { "X-Request-Id": requestId } });
+    }
+
+    const reserved = await reserveCredit(supabase, {
+      userId,
+      requestId,
+      apiRoute: "/api/generate/creative",
+      model: "gemini-2.5-flash-image-preview",
+      metadata: { prompt: !!prompt, lensLook },
+    });
+    didReserve = reserved;
+    if (!reserved) {
+      return NextResponse.json({ error: "Insufficient credits", requestId }, { status: 402, headers: { "X-Request-Id": requestId } });
     }
 
     const dishArrayBuffer = await dish.arrayBuffer();
@@ -69,7 +106,8 @@ export async function POST(request: Request) {
     if (!dishAnalysisResp.ok) {
         const errText = await dishAnalysisResp.text();
         console.error("[generate] dish analysis error:", errText);
-        return NextResponse.json({ error: `Gateway error during dish analysis: ${dishAnalysisResp.status} ${errText}` }, { status: 502 });
+        try { await finalizeCredit(supabase, { userId, requestId, success: false }); } catch {}
+        return NextResponse.json({ error: `Gateway error during dish analysis: ${dishAnalysisResp.status} ${errText}`, requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
     const dishAnalysisJson = (await dishAnalysisResp.json()) as any;
     {
@@ -129,7 +167,8 @@ export async function POST(request: Request) {
         } else {
             const errText = await bgAnalysisResp.text();
             console.error("[generate] background analysis error:", errText);
-            return NextResponse.json({ error: `Gateway error during background analysis: ${bgAnalysisResp.status} ${errText}` }, { status: 502 });
+            try { await finalizeCredit(supabase, { userId, requestId, success: false }); } catch {}
+            return NextResponse.json({ error: `Gateway error during background analysis: ${bgAnalysisResp.status} ${errText}`, requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
         }
     }
 
@@ -181,7 +220,8 @@ export async function POST(request: Request) {
     if (!finalPromptGenResp.ok) {
         const errText = await finalPromptGenResp.text();
         console.error("[generate] prompt generation error:", errText);
-        return NextResponse.json({ error: `Gateway error during prompt generation: ${finalPromptGenResp.status} ${errText}` }, { status: 502 });
+        try { await finalizeCredit(supabase, { userId, requestId, success: false }); } catch {}
+        return NextResponse.json({ error: `Gateway error during prompt generation: ${finalPromptGenResp.status} ${errText}`, requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
     const finalPromptGenJson = (await finalPromptGenResp.json()) as any;
     {
@@ -228,7 +268,8 @@ export async function POST(request: Request) {
     if (!resp.ok) {
       const errText = await resp.text();
       console.error("[generate] image generation error:", errText);
-      return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}` }, { status: 502 });
+      try { await finalizeCredit(supabase, { userId, requestId, success: false }); } catch {}
+      return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}`, requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
     const json = (await resp.json()) as unknown;
 
@@ -243,7 +284,8 @@ export async function POST(request: Request) {
 
     if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("data:image/")) {
       console.error("[generate] no image produced", { hasImages: Array.isArray(images), imageUrlType: typeof imageUrl });
-      return NextResponse.json({ error: "No image produced" }, { status: 502 });
+      try { await finalizeCredit(supabase, { userId, requestId, success: false }); } catch {}
+      return NextResponse.json({ error: "No image produced", requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
 
     const commaIdx = imageUrl.indexOf(",");
@@ -255,17 +297,32 @@ export async function POST(request: Request) {
 
     console.log("[generate] success:", { outType, outBytes: outBuffer.byteLength });
 
-    return new Response(outBuffer, {
+    let balanceHeader = "";
+    try {
+      const { data: balance } = await supabase.rpc("get_current_credit_balance", { user_id_input: userId });
+      balanceHeader = String(Number(balance ?? 0));
+    } catch {}
+
+    const response = new Response(outBuffer, {
       status: 200,
       headers: {
         "Content-Type": outType,
         "Content-Disposition": `attachment; filename=\"${outName}\"`,
         "Cache-Control": "no-store",
+        "X-Request-Id": requestId,
+        ...(balanceHeader ? { "X-Credit-Balance": balanceHeader } : {}),
       },
     });
+    await finalizeCredit(supabase, { userId, requestId, success: true });
+    return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[generate] fatal error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    try {
+      if (didReserve && currentUserId) {
+        await finalizeCredit(await createClient(), { userId: currentUserId, requestId, success: false });
+      }
+    } catch {}
+    return NextResponse.json({ error: message, requestId }, { status: 500, headers: { "X-Request-Id": requestId } });
   }
 }

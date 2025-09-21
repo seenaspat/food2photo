@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
 import FileUpload from "@/components/kokonutui/file-upload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,53 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
 	const [showPreview, setShowPreview] = useState<boolean>(false);
 	const [creditBalance, setCreditBalance] = useState<number | null>(null);
+
+	// Persist/restore non-file UI state across auth redirects
+	const STORAGE_KEY = "generatorv1:ui-state";
+	const persistUiState = useCallback(() => {
+		try {
+			const payload = {
+				selectedBackground,
+				selectedTopdownRef,
+				lens,
+				aspectRatio,
+				preservePlate,
+				variantHint,
+			};
+			sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+		} catch {}
+	}, [selectedBackground, selectedTopdownRef, lens, aspectRatio, preservePlate, variantHint]);
+
+	useEffect(() => {
+		try {
+			const raw = sessionStorage.getItem(STORAGE_KEY);
+			if (!raw) return;
+			const parsed = JSON.parse(raw) as Partial<Record<string, unknown>>;
+			if (typeof parsed.selectedBackground === "string") setSelectedBackground(parsed.selectedBackground);
+			if (typeof parsed.selectedTopdownRef === "string") setSelectedTopdownRef(parsed.selectedTopdownRef);
+			if (typeof parsed.lens === "string" && (lensOptions as readonly string[]).includes(parsed.lens as string)) setLens(parsed.lens as Lens);
+			if (typeof parsed.aspectRatio === "string") setAspectRatio(parsed.aspectRatio as AspectRatioId);
+			if (typeof parsed.preservePlate === "boolean") setPreservePlate(parsed.preservePlate);
+			if (typeof parsed.variantHint === "string") setVariantHint(parsed.variantHint);
+			sessionStorage.removeItem(STORAGE_KEY);
+		} catch {}
+	}, []);
+
+	const ensureAuthedOrRedirect = useCallback(async (): Promise<boolean> => {
+		try {
+			const supabase = createClient();
+			const { data } = await supabase.auth.getUser();
+			const isAuthed = Boolean(data.user?.id);
+			if (!isAuthed) {
+				persistUiState();
+				window.location.href = "/auth/login?next=/generatorv1";
+				return false;
+			}
+			return true;
+		} catch {
+			return true;
+		}
+	}, [persistUiState]);
 
 	const refreshBalance = useCallback(async () => {
 		try {
@@ -419,12 +467,24 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 									return p.get('debug') === '1' ? '?debug=1' : '';
 								} catch { return ''; }
 							})();
-							const resp = await fetch(`/api/generate${debugSuffix}`, { method: "POST", body: fd });
-							if (!resp.ok) {
-								let details = "";
-								try { details = await resp.text(); } catch {}
-								throw new Error(`Generation failed: ${resp.status}${details ? ` - ${details}` : ""}`);
-							}
+					// Require auth at action time
+					const authed = await ensureAuthedOrRedirect();
+					if (!authed) return;
+					const resp = await fetch(`/api/generate${debugSuffix}`, { method: "POST", body: fd });
+					if (!resp.ok) {
+						if (resp.status === 401) {
+							persistUiState();
+							window.location.href = "/auth/login?next=/generatorv1";
+							return;
+						}
+						if (resp.status === 402) {
+							window.location.href = "/pricing?need_credits=1";
+							return;
+						}
+						let details = "";
+						try { details = await resp.text(); } catch {}
+						throw new Error(`Generation failed: ${resp.status}${details ? ` - ${details}` : ""}`);
+					}
 							const blob = await resp.blob();
 							const url = URL.createObjectURL(blob);
 							setGeneratedImageUrl(url);
@@ -482,12 +542,23 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 												if (!generatedImageUrl) return;
 												try {
 													setIsRegenerating(true);
-													const baseBlob = await fetch(generatedImageUrl).then((r) => r.blob());
+						const authed = await ensureAuthedOrRedirect();
+						if (!authed) return;
+						const baseBlob = await fetch(generatedImageUrl).then((r) => r.blob());
 													const fd = new FormData();
 													fd.append("image", baseBlob, "base.jpg");
 													fd.append("hint", variantHint.trim());
-													const resp = await fetch("/api/variant", { method: "POST", body: fd });
-													if (!resp.ok) {
+							const resp = await fetch("/api/variant", { method: "POST", body: fd });
+							if (!resp.ok) {
+								if (resp.status === 401) {
+									persistUiState();
+									window.location.href = "/auth/login?next=/generatorv1";
+									return;
+								}
+								if (resp.status === 402) {
+									window.location.href = "/pricing?need_credits=1";
+									return;
+								}
 														let details = "";
 														try { details = await resp.text(); } catch {}
 														throw new Error(`Variant failed: ${resp.status}${details ? ` - ${details}` : ""}`);

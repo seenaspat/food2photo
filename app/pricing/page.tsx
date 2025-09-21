@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ArrowRight, BadgeCheck } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const plans = [
@@ -73,6 +74,71 @@ const plans = [
 
 export default function PricingPage() {
   const [frequency, setFrequency] = useState<string>("monthly");
+  const proPlanPriceId = useMemo(() => (frequency === "yearly" ? "pro_yearly" : "pro_monthly"), [frequency]);
+  const [subscribed, setSubscribed] = useState<boolean>(false);
+  const [renewAt, setRenewAt] = useState<string | null>(null);
+  const [isAuthed, setIsAuthed] = useState<boolean>(false);
+  const [stripePrices, setStripePrices] = useState<{ monthly?: { unit_amount: number | null, currency: string | null }, yearly?: { unit_amount: number | null, currency: string | null } }>({});
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
+  const [loadingBilling, setLoadingBilling] = useState<boolean>(true);
+  const [loadingPrices, setLoadingPrices] = useState<boolean>(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        // auth gate
+        try {
+          const supabase = createClient();
+          const { data } = await supabase.auth.getUser();
+          setIsAuthed(Boolean(data.user?.id));
+        } catch {}
+
+        const res = await fetch("/api/billing/balance", { method: "GET" });
+        const json = await res.json();
+        const status = json?.subscription?.status as string | undefined;
+        const renew = json?.subscription?.renew_at as string | undefined;
+        const willCancel = Boolean(json?.subscription?.cancel_at_period_end);
+        const isActive = status === "trialing" || status === "active" || status === "past_due";
+        setSubscribed(Boolean(isActive));
+        setRenewAt(renew ?? null);
+        setCancelAtPeriodEnd(willCancel);
+      } catch {} finally { setLoadingBilling(false); }
+      try {
+        const r = await fetch("/api/billing/prices", { method: "GET", cache: "no-store" });
+        const j = await r.json();
+        setStripePrices(j?.pro ?? {});
+      } catch {} finally { setLoadingPrices(false); }
+    })();
+  }, []);
+
+  const createCheckout = useCallback(async () => {
+    try {
+      const body = { planCode: proPlanPriceId };
+      const res = await fetch("/api/billing/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Checkout failed");
+      if (json?.url) window.location.href = json.url as string;
+    } catch (e) {
+      console.error(e);
+      alert("Could not start checkout. Please try again.");
+    }
+  }, [proPlanPriceId]);
+
+  const openPortal = useCallback(async () => {
+    try {
+      const res = await fetch("/api/billing/portal", { method: "GET" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Portal failed");
+      if (json?.url) window.location.href = json.url as string;
+    } catch (e) {
+      console.error(e);
+      alert("Could not open billing portal. Please try again.");
+    }
+  }, []);
   return (
     <div className="not-prose flex flex-col gap-16 px-8 py-24 text-center">
       <div className="flex flex-col items-center justify-center gap-8">
@@ -112,22 +178,36 @@ export default function PricingPage() {
                 </CardTitle>
                 <CardDescription>
                   <p>{plan.description}</p>
-                  {typeof plan.price[frequency as keyof typeof plan.price] ===
-                  "number" ? (
-                    <NumberFlow
-                      className="font-medium text-foreground"
-                      format={{
-                        style: "currency",
-                        currency: "USD",
-                        maximumFractionDigits: 0,
-                      }}
-                      suffix={`/month, billed ${frequency}.`}
-                      value={
-                        plan.price[
-                          frequency as keyof typeof plan.price
-                        ] as number
+                  {plan.id === "pro" ? (
+                    (() => {
+                      const p = frequency === "yearly" ? stripePrices.yearly : stripePrices.monthly;
+                      const amount = p?.unit_amount ?? null;
+                      const currency = (p?.currency ?? "USD").toUpperCase();
+                      if (loadingPrices) {
+                        return (
+                          <span className="inline-block h-5 w-28 rounded bg-muted animate-pulse" aria-busy="true" />
+                        );
                       }
-                    />
+                      if (typeof amount === "number") {
+                        return (
+                          <NumberFlow
+                            className="font-medium text-foreground"
+                            format={{
+                              style: "currency",
+                              currency,
+                              maximumFractionDigits: 0,
+                            }}
+                            suffix={`/month, billed ${frequency}.`}
+                            value={frequency === "yearly" ? Math.round(amount / 12) / 100 : Math.round(amount) / 100}
+                          />
+                        );
+                      }
+                      return (
+                        <span className="font-medium text-foreground">
+                          {plan.price[frequency as keyof typeof plan.price]}.
+                        </span>
+                      );
+                    })()
                   ) : (
                     <span className="font-medium text-foreground">
                       {plan.price[frequency as keyof typeof plan.price]}.
@@ -147,16 +227,48 @@ export default function PricingPage() {
                 ))}
               </CardContent>
               <CardFooter>
-                <Button
-                  className="w-full"
-                  variant={plan.popular ? "default" : "secondary"}
-                >
-                  {plan.cta}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                {plan.id === "pro" ? (
+                  <Button
+                    className="w-full"
+                    variant={plan.popular ? "default" : "secondary"}
+                    onClick={subscribed ? openPortal : (isAuthed ? createCheckout : () => (window.location.href = "/auth/login"))}
+                  >
+                    {subscribed ? "Manage billing" : (isAuthed ? plan.cta : "Log in to subscribe")}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                ) : plan.id === "hobby" ? (
+                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/auth/sign-up") }>
+                    {plan.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/contact") }>
+                    {plan.cta}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           ))}
+        </div>
+        <div className="mt-2 text-sm text-muted-foreground min-h-5">
+          {loadingBilling ? (
+            <div className="inline-block h-4 w-64 rounded bg-muted animate-pulse" aria-busy="true" />
+          ) : subscribed ? (
+            cancelAtPeriodEnd ? (
+              <>
+                <span>Your subscription will not renew.</span>{" "}
+                {renewAt ? <span>Access ends on {new Date(renewAt).toLocaleDateString()}.</span> : null}
+              </>
+            ) : (
+              <>
+                <span>You have an active subscription.</span>{" "}
+                {renewAt ? <span>Renews on {new Date(renewAt).toLocaleDateString()}.</span> : null}
+              </>
+            )
+          ) : (
+            <span>No active subscription yet. Choose a plan to get started.</span>
+          )}
         </div>
       </div>
     </div>
