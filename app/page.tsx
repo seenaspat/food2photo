@@ -1,40 +1,35 @@
-import { DeployButton } from "@/components/deploy-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
 import { Hero } from "@/components/hero";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { ConnectSupabaseSteps } from "@/components/tutorial/connect-supabase-steps";
-import { SignUpUserSteps } from "@/components/tutorial/sign-up-user-steps";
-import { hasEnvVars } from "@/lib/utils";
-import Link from "next/link";
+import { FeatureAcrossDevices } from "@/components/feature-across-devices";
+import { FeatureSplit } from "@/components/feature-split";
+import { FAQ } from "@/components/faq";
 
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center">
-      <div className="flex-1 w-full flex flex-col gap-20 items-center">
+      <div className="flex-1 w-full flex flex-col gap-12 items-center">
         {/* Navbar moved to RootLayout via <SiteNavbar /> */}
-        <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
-          <Hero />
-          <main className="flex-1 flex flex-col gap-6 px-4">
-            <h2 className="font-medium text-xl mb-4">Next steps</h2>
-            {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
-          </main>
+        <Hero />
+        <div className="flex-1 flex flex-col gap-12 w-full p-5">
+          <FeatureAcrossDevices />
+          <FeatureSplit
+            title="Plantillas y fondos consistentes"
+            description="Acelera la producción con plantillas y fondos IA coherentes. Mantén tu marca constante en catálogo, anuncios y redes."
+            ctaHref="/generatorv1"
+            ctaText="Probar plantillas"
+            desktopImageSrc="/backgrounds/v4-003/bg-v4-overhead-blue-painted-wood-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-10-10-552Z-oceawa.png"
+            phoneImageSrc="/backgrounds/v4-003/bg-v4-overhead-linen-bistro-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-12-21-500Z-v6i0ux.png"
+            reverse
+          />
+          <FeatureSplit
+            title="Batch y variantes en segundos"
+            description="Genera múltiples composiciones y tamaños de forma automática. Publica más rápido en marketplaces y social sin perder calidad."
+            ctaHref="/generatorv1"
+            ctaText="Generar en batch"
+            desktopImageSrc="/backgrounds/v4-003/bg-v4-overhead-concrete-autumn-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-11-20-213Z-rub58k.png"
+            phoneImageSrc="/backgrounds/v4-003/bg-v4-overhead-slate-minimal-sushi-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-13-06-842Z-u5iyra.png"
+          />
+          <FAQ />
         </div>
-
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <p>
-            Powered by{" "}
-            <a
-              href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-              target="_blank"
-              className="font-bold hover:underline"
-              rel="noreferrer"
-            >
-              Supabase
-            </a>
-          </p>
-          <ThemeSwitcher />
-        </footer>
       </div>
     </main>
   );

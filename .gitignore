@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Large background videos
+/public/backgrounds/*.mp4
+/public/backgrounds/*.webm
+
+/public/backgrounds/*.mp4
+/public/backgrounds/*.webm
