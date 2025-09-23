@@ -16,58 +16,44 @@ export function FeatureAcrossDevices() {
       >
         <div>
           <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            Crea visuales en todos tus dispositivos
+          From Kitchen Counter to Pro Shot, Instantly.
           </h2>
           <p className="mt-4 text-pretty text-base text-muted-foreground sm:text-lg">
-            Ya sea en escritorio o en movilidad, Food2Photo te permite crear y
-            editar imágenes de producto en minutos: consistentes, realistas y
-            listas para e‑commerce y social.
+          Why wait? Snap a photo of your dish the moment it's perfect and turn it into a stunning, styled shot right from your phone. Food2Photo is your on-the-spot art director, ensuring you never miss a chance to create mouth-watering content.
           </p>
           <div className="mt-8">
             <Link href="/generatorv1">
-              <Button size="lg">Empieza gratis</Button>
+              <Button size="lg">Try It Now</Button>
             </Link>
           </div>
         </div>
 
-        <div className="relative">
-          <div className="relative rounded-3xl bg-amber-50 p-6 shadow-sm ring-1 ring-black/5">
+        <div className="relative w-full mx-auto max-w-[460px] sm:max-w-none">
             {/* Desktop mock */}
-            <div className="relative rounded-2xl bg-black/5 shadow-2xl ring-1 ring-black/10">
+            <div className="relative rounded-2xl shadow-2xl ring-1 ring-black/10">
               <Image
-                src="/backgrounds/v4-003/bg-v4-overhead-bright-marble-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-12-29-403Z-rb1j4w.png"
+                src="/feature1-main.webp"
                 alt="Lienzo de edición en escritorio con un bowl fresco"
                 width={1024}
                 height={768}
                 className="h-auto w-full rounded-2xl object-cover"
                 priority
               />
-              <div className="pointer-events-none absolute inset-0 flex items-start justify-start p-8">
-                <span className="text-4xl font-extrabold uppercase tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:text-5xl">
-                  FRESH & DELICIOUS
-                </span>
-              </div>
             </div>
 
             {/* Phone mock */}
-            <div className="absolute -bottom-6 -left-6 w-[44%] max-w-[280px]">
-              <div className="relative rounded-[2rem] bg-black/5 shadow-2xl ring-1 ring-black/10">
+            <div className="absolute -bottom-8 -left-8 w-[64%] max-w-[360px] sm:-bottom-12 sm:-left-24 sm:max-w-[380px]">
+              <div className="relative rounded-2xl">
                 <Image
-                  src="/backgrounds/v4-003/bg-v4-overhead-dark-slate-holiday-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-12-52-963Z-1r8yiu.png"
+                  src="/file-upload.webp"
                   alt="Vista móvil con composición de producto"
                   width={600}
                   height={900}
-                  className="h-auto w-full rounded-[2rem] object-cover"
+                  className="h-auto w-full rounded-2xl object-cover"
                 />
-                <div className="pointer-events-none absolute inset-0 flex items-start justify-start p-6">
-                  <span className="text-xl font-extrabold uppercase tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
-                    FRESH & DELICIOUS
-                  </span>
-                </div>
               </div>
             </div>
           </div>
-        </div>
       </motion.div>
     </section>
   );

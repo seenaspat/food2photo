@@ -149,10 +149,18 @@ export default function PricingPage() {
           Managing a business is hard enough, so why not make your life easier?
           Our pricing plans are simple, transparent and scale with you.
         </p>
-        <Tabs defaultValue={frequency} onValueChange={setFrequency}>
-          <TabsList>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            <TabsTrigger value="yearly">
+        <Tabs value={frequency} onValueChange={setFrequency}>
+          <TabsList className="rounded-full bg-zinc-100 dark:bg-zinc-900 p-1 ring-1 ring-zinc-300 dark:ring-zinc-700">
+            <TabsTrigger
+              value="monthly"
+              className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
+            >
+              Monthly
+            </TabsTrigger>
+            <TabsTrigger
+              value="yearly"
+              className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
+            >
               Yearly
               <Badge variant="secondary">20% off</Badge>
             </TabsTrigger>

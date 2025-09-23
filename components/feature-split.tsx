@@ -47,8 +47,7 @@ export function FeatureSplit({
         </div>
 
         <div className={reverse ? "lg:order-1" : undefined}>
-          <div className="relative rounded-3xl bg-amber-50 p-6 shadow-sm ring-1 ring-black/5">
-            <div className="relative rounded-2xl bg-black/5 shadow-2xl ring-1 ring-black/10">
+            <div className="relative rounded-2xl">
               <Image
                 src={desktopImageSrc}
                 alt="Ejemplo de edición en escritorio"
@@ -57,29 +56,7 @@ export function FeatureSplit({
                 className="h-auto w-full rounded-2xl object-cover"
                 priority
               />
-              <div className="pointer-events-none absolute inset-0 flex items-start justify-start p-8">
-                <span className="text-4xl font-extrabold uppercase tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)] sm:text-5xl">
-                  FRESH & DELICIOUS
-                </span>
-              </div>
-            </div>
 
-            <div className="absolute -bottom-6 -left-6 w-[44%] max-w-[280px]">
-              <div className="relative rounded-[2rem] bg-black/5 shadow-2xl ring-1 ring-black/10">
-                <Image
-                  src={phoneImageSrc}
-                  alt="Ejemplo de vista móvil"
-                  width={600}
-                  height={900}
-                  className="h-auto w-full rounded-[2rem] object-cover"
-                />
-                <div className="pointer-events-none absolute inset-0 flex items-start justify-start p-6">
-                  <span className="text-xl font-extrabold uppercase tracking-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
-                    FRESH & DELICIOUS
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </motion.div>

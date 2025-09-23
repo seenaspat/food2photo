@@ -12,20 +12,20 @@ export default function Home() {
         <div className="flex-1 flex flex-col gap-12 w-full p-5">
           <FeatureAcrossDevices />
           <FeatureSplit
-            title="Plantillas y fondos consistentes"
-            description="Acelera la producción con plantillas y fondos IA coherentes. Mantén tu marca constante en catálogo, anuncios y redes."
+            title="Your Visual Style, Locked In."
+            description="Create a consistent look across your entire menu. Our AI templates act as your brand's style guide, ensuring every photo—from your website to your delivery apps—shares a cohesive, professional aesthetic. No more random, mismatched shots."
             ctaHref="/generatorv1"
-            ctaText="Probar plantillas"
-            desktopImageSrc="/backgrounds/v4-003/bg-v4-overhead-blue-painted-wood-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-10-10-552Z-oceawa.png"
-            phoneImageSrc="/backgrounds/v4-003/bg-v4-overhead-linen-bistro-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-12-21-500Z-v6i0ux.png"
+            ctaText="Find Your Style"
+            desktopImageSrc="/feature2-main.webp"
+            phoneImageSrc="/backgrounds/v3-003/bg-v3-chiringuito-seafood-role-you-are-a-restaurant-ambience-stylist-for-2025-09-07T20-50-24-733Z-szr0bo.png"
             reverse
           />
           <FeatureSplit
-            title="Batch y variantes en segundos"
-            description="Genera múltiples composiciones y tamaños de forma automática. Publica más rápido en marketplaces y social sin perder calidad."
+            title="The Final Touch is Yours."
+            description="Use simple text prompts to add the final, creative touch. Add a side of fries, swap the plate, or see what a sprinkle of chili flakes looks like. It’s your tool to refine a great shot until it’s absolutely perfect."
             ctaHref="/generatorv1"
-            ctaText="Generar en batch"
-            desktopImageSrc="/backgrounds/v4-003/bg-v4-overhead-concrete-autumn-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-11-20-213Z-rub58k.png"
+            ctaText="Add Your Touch"
+            desktopImageSrc="/feature3-main.webp"
             phoneImageSrc="/backgrounds/v4-003/bg-v4-overhead-slate-minimal-sushi-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-13-06-842Z-u5iyra.png"
           />
           <FAQ />
