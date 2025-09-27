@@ -18,15 +18,25 @@ export async function GET() {
 			return p ? { unit_amount: p.unit_amount ?? null, currency: p.currency } : { unit_amount: null, currency: null };
 		}
 
-		const [proMonthly, proYearly] = await Promise.all([
+		const [proMonthly, proYearly, basicMonthly, credits10, credits50] = await Promise.all([
 			getByLookupKey("pro_monthly"),
 			getByLookupKey("pro_yearly"),
+			getByLookupKey("basic_monthly"),
+			getByLookupKey("credits_10"),
+			getByLookupKey("credits_50"),
 		]);
 
 		return NextResponse.json({
 			pro: {
 				monthly: proMonthly,
 				yearly: proYearly,
+			},
+			basic: {
+				monthly: basicMonthly,
+			},
+			credits: {
+				c10: credits10,
+				c50: credits50,
 			},
 		});
 	} catch (e) {

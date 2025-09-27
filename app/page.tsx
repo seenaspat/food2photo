@@ -9,7 +9,7 @@ export default function Home() {
       <div className="flex-1 w-full flex flex-col gap-12 items-center">
         {/* Navbar moved to RootLayout via <SiteNavbar /> */}
         <Hero />
-        <div className="flex-1 flex flex-col gap-12 w-full p-5">
+        <section id="features" className="flex-1 flex flex-col gap-12 w-full p-5 scroll-mt-[var(--navbar-h,64px)]">
           <FeatureAcrossDevices />
           <FeatureSplit
             title="Your Visual Style, Locked In."
@@ -29,7 +29,7 @@ export default function Home() {
             phoneImageSrc="/backgrounds/v4-003/bg-v4-overhead-slate-minimal-sushi-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-13-06-842Z-u5iyra.png"
           />
           <FAQ />
-        </div>
+        </section>
       </div>
     </main>
   );

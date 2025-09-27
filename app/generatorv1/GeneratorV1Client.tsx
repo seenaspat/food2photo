@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import FileUpload from "@/components/kokonutui/file-upload";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { LoginForm } from "@/components/login-form";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info, Loader2 } from "lucide-react";
@@ -19,6 +21,7 @@ import { CarouselDots } from "../../components/ui/carousel";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -62,7 +65,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [backgroundUpload, setBackgroundUpload] = useState<File | null>(null);
 	const [backgroundPreviewUrl, setBackgroundPreviewUrl] = useState<string | null>(null);
 	const [lens, setLens] = useState<Lens>("85mm/macro");
-	const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
 	const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 	const [variantHint, setVariantHint] = useState<string>("");
 	const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
@@ -72,6 +76,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
 	const [showPreview, setShowPreview] = useState<boolean>(false);
 	const [creditBalance, setCreditBalance] = useState<number | null>(null);
+	const [downloadFormat, setDownloadFormat] = useState<"png" | "jpeg" | "webp">("png");
 
 	// Persist/restore non-file UI state across auth redirects
 	const STORAGE_KEY = "generatorv1:ui-state";
@@ -104,14 +109,14 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 		} catch {}
 	}, []);
 
-	const ensureAuthedOrRedirect = useCallback(async (): Promise<boolean> => {
+  const ensureAuthedOrRedirect = useCallback(async (): Promise<boolean> => {
 		try {
 			const supabase = createClient();
 			const { data } = await supabase.auth.getUser();
 			const isAuthed = Boolean(data.user?.id);
 			if (!isAuthed) {
-				persistUiState();
-				window.location.href = "/auth/login?next=/generatorv1";
+        persistUiState();
+        setShowAuthModal(true);
 				return false;
 			}
 			return true;
@@ -219,6 +224,107 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 		if (pages.length === 0) pages.push(Array(9).fill(null));
 		return pages;
 	}, [filteredTopdownItems]);
+
+	function slugify(source: string): string {
+		return source
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/(^-|-$)/g, "")
+			.slice(0, 60);
+	}
+
+	const backgroundLabel = useMemo(() => {
+		if (backgroundUpload) return "custom-bg";
+		if (selectedTopdownRef) {
+			const idx = selectedTopdownRef.indexOf(":");
+			const id = idx >= 0 ? selectedTopdownRef.slice(idx + 1) : selectedTopdownRef;
+			const label = topdownItems.find((it) => it.id === id)?.label ?? id;
+			return slugify(label);
+		}
+		if (selectedBackground && selectedBackground !== "none") {
+			const label = backgroundOptions.find((b) => b.id === selectedBackground)?.label ?? selectedBackground;
+			return slugify(label);
+		}
+		return "none";
+	}, [backgroundUpload, selectedTopdownRef, selectedBackground, backgroundOptions, topdownItems]);
+
+	const shortUuid = useCallback((): string => {
+		try {
+			return crypto.randomUUID().slice(0, 8);
+		} catch {
+			try {
+				const arr = new Uint8Array(4);
+				crypto.getRandomValues(arr);
+				return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+			} catch {
+				return Math.random().toString(36).slice(2, 10);
+			}
+		}
+	}, []);
+
+	const convertBlobToFormat = useCallback(async (blob: Blob, format: "png" | "jpeg" | "webp"): Promise<Blob> => {
+		const mime = format === "png" ? "image/png" : format === "jpeg" ? "image/jpeg" : "image/webp";
+		const quality: number | undefined = format === "png" ? undefined : 0.92;
+		let bitmap: ImageBitmap | null = null;
+		try {
+			if (typeof createImageBitmap === "function") {
+				bitmap = await createImageBitmap(blob);
+			}
+		} catch {}
+
+		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d");
+		if (!ctx) throw new Error("Canvas 2D context unavailable");
+
+		if (bitmap) {
+			canvas.width = bitmap.width;
+			canvas.height = bitmap.height;
+			ctx.drawImage(bitmap, 0, 0);
+			bitmap.close?.();
+		} else {
+			const url = URL.createObjectURL(blob);
+			try {
+				const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+					const i = new Image();
+					i.onload = () => resolve(i);
+					i.onerror = reject;
+					i.src = url;
+				});
+				canvas.width = img.naturalWidth || img.width;
+				canvas.height = img.naturalHeight || img.height;
+				ctx.drawImage(img, 0, 0);
+			} finally {
+				URL.revokeObjectURL(url);
+			}
+		}
+
+		const converted = await new Promise<Blob>((resolve, reject) => {
+			canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Conversion failed"))), mime, quality);
+		});
+		return converted;
+	}, []);
+
+	const handleDownload = useCallback(async () => {
+		if (!generatedImageUrl) return;
+		try {
+			const srcBlob = await fetch(generatedImageUrl).then((r) => r.blob());
+			const outBlob = await convertBlobToFormat(srcBlob, downloadFormat);
+			const ext = downloadFormat === "jpeg" ? "jpg" : downloadFormat;
+			const filename = `food2photo-${backgroundLabel}-${shortUuid()}.${ext}`;
+			const file = new File([outBlob], filename, { type: outBlob.type || (downloadFormat === "png" ? "image/png" : downloadFormat === "jpeg" ? "image/jpeg" : "image/webp") });
+			const url = URL.createObjectURL(file);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = filename;
+			a.setAttribute("download", filename);
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			console.error(e);
+		}
+	}, [generatedImageUrl, downloadFormat, convertBlobToFormat, backgroundLabel, shortUuid]);
 
 	return (
 		<div className="container mx-auto px-4 py-6">
@@ -402,7 +508,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						</CardContent>
 					</Card>
 				</div>
-				<div className="space-y-4">
+                <div className="space-y-4">
 					<Card>
 						<CardHeader>
 							<CardTitle>3) Camera & Style</CardTitle>
@@ -439,12 +545,10 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						</CardContent>
 					</Card>
 
-					<Button className="w-full" size="lg" disabled={!canEnhance || isGenerating} onClick={async () => {
-						if (!uploaded) return;
-						try {
-							setIsGenerating(true);
-							setShowPreview(true);
-							setGeneratedImageUrl(null);
+                  <Button className="w-full" size="lg" disabled={!canEnhance || isGenerating} onClick={async () => {
+                    if (!uploaded) return;
+                    try {
+                      // Only flip state after auth succeeds
 							const fd = new FormData();
 							fd.append("dish", uploaded);
 							if (backgroundUpload) {
@@ -461,22 +565,25 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 							fd.append("lensLook", lens);
 							fd.append("aspectRatio", aspectRatio);
 							fd.append("preservePlate", preservePlate ? "1" : "0");
-							const debugSuffix = (() => {
+                      const debugSuffix = (() => {
 								try {
 									const p = new URLSearchParams(window.location.search);
 									return p.get('debug') === '1' ? '?debug=1' : '';
 								} catch { return ''; }
 							})();
-					// Require auth at action time
-					const authed = await ensureAuthedOrRedirect();
-					if (!authed) return;
+          // Require auth at action time
+          const authed = await ensureAuthedOrRedirect();
+          if (!authed) return;
+          setIsGenerating(true);
+          setShowPreview(true);
+          setGeneratedImageUrl(null);
 					const resp = await fetch(`/api/generate${debugSuffix}`, { method: "POST", body: fd });
 					if (!resp.ok) {
-						if (resp.status === 401) {
-							persistUiState();
-							window.location.href = "/auth/login?next=/generatorv1";
-							return;
-						}
+                        if (resp.status === 401) {
+                          persistUiState();
+                          setShowAuthModal(true);
+                          return;
+                        }
 						if (resp.status === 402) {
 							window.location.href = "/pricing?need_credits=1";
 							return;
@@ -500,6 +607,18 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 					}}>
 						{isGenerating ? "Enhancing..." : "Enhance Photo"}
 					</Button>
+
+                  <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
+                    <DialogContent className="max-h-[85vh] overflow-y-auto p-0">
+                      <DialogTitle className="sr-only">Sign in</DialogTitle>
+                      <LoginForm
+                        className="max-w-none"
+                        onSuccess={() => {
+                          setShowAuthModal(false);
+                        }}
+                      />
+                    </DialogContent>
+                  </Dialog>
 
 					{showPreview && (
 						<Card>
@@ -580,13 +699,21 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 											}}>
 											{isRegenerating ? "Regenerating..." : "Regenerate"}
 										</Button>
-										<a href={generatedImageUrl} download className="inline-flex">
-											<Button className="gap-2" asChild>
-												<span>
-													<Download className="h-4 w-4" /> Download
-												</span>
+										<div className="flex items-center gap-2">
+											<Select value={downloadFormat} onValueChange={(v) => setDownloadFormat(v as "png" | "jpeg" | "webp")}>
+												<SelectTrigger className="w-[130px]">
+													<SelectValue placeholder="Format" />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="png">PNG</SelectItem>
+													<SelectItem value="jpeg">JPEG</SelectItem>
+													<SelectItem value="webp">WebP</SelectItem>
+												</SelectContent>
+											</Select>
+											<Button className="gap-2" onClick={handleDownload} disabled={!generatedImageUrl}>
+												<Download className="h-4 w-4" /> Download {downloadFormat.toUpperCase()}
 											</Button>
-										</a>
+										</div>
 									</div>
 								</>
 							) : (

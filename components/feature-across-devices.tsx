@@ -33,7 +33,7 @@ export function FeatureAcrossDevices() {
             <div className="relative rounded-2xl shadow-2xl ring-1 ring-black/10">
               <Image
                 src="/feature1-main.webp"
-                alt="Lienzo de edición en escritorio con un bowl fresco"
+                alt="Desktop editing example with a fresh bowl"
                 width={1024}
                 height={768}
                 className="h-auto w-full rounded-2xl object-cover"
@@ -46,7 +46,7 @@ export function FeatureAcrossDevices() {
               <div className="relative rounded-2xl">
                 <Image
                   src="/file-upload.webp"
-                  alt="Vista móvil con composición de producto"
+                  alt="Mobile view with product composition"
                   width={600}
                   height={900}
                   className="h-auto w-full rounded-2xl object-cover"

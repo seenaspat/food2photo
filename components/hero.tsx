@@ -9,7 +9,7 @@ export function Hero() {
     <HeroImageBackground
       src="/hero-bg.webp"
       hideBackgroundBelowLg
-      className="lg:min-h-[86vh]"
+      className="lg:min-h-[90vh]"
       objectPosition="center 20%"
       overlayOpacity={0}
     >
@@ -36,7 +36,7 @@ export function Hero() {
     <div className="block lg:hidden -mt-3 w-full">
       <Image
         src="/hero-mobile.webp"
-        alt="Escena de producto en formato móvil"
+        alt="Product shot in mobile format"
         width={1600}
         height={900}
         priority

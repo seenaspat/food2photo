@@ -50,7 +50,7 @@ export function FeatureSplit({
             <div className="relative rounded-2xl">
               <Image
                 src={desktopImageSrc}
-                alt="Ejemplo de edición en escritorio"
+                alt="Desktop editing example"
                 width={1200}
                 height={800}
                 className="h-auto w-full rounded-2xl object-cover"
