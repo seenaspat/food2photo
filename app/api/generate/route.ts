@@ -3,23 +3,54 @@ import path from "node:path";
 import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { loadCatalog, resolveBackground } from "../../../lib/backgrounds/catalog.server";
+import type { ResolvedBackground, BgRef } from "../../../lib/backgrounds/types";
 import { buildCompositionPrompt } from "../../../lib/generation/prompt";
+import { createClient } from "../../../lib/supabase/server";
+import { isRateLimited, logApiRequest } from "../../../lib/rate-limit";
+import { reserveCredit, finalizeCredit } from "../../../lib/metering";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const requestId = crypto.randomUUID();
+    const supabase = await createClient();
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id ?? null;
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized", requestId }, { status: 401, headers: { "X-Request-Id": requestId } });
+    }
+
+    const ip = (() => {
+      try { return (request.headers.get('x-forwarded-for') ?? '').split(',')[0] || '0.0.0.0'; } catch { return '0.0.0.0'; }
+    })();
+    const limited = await isRateLimited(supabase, userId, ip, { perMinute: 10, perHour: 200 }, "/api/generate");
+    await logApiRequest(supabase, userId, ip, "/api/generate");
+    if (limited) {
+      return NextResponse.json({ error: "Rate limit exceeded", requestId }, { status: 429, headers: { "X-Request-Id": requestId } });
+    }
+
+    const reserved = await reserveCredit(supabase, {
+      userId,
+      requestId,
+      apiRoute: "/api/generate",
+      model: "gemini-2.5-flash-image-preview",
+      metadata: {},
+    });
+    if (!reserved) {
+      return NextResponse.json({ error: "Insufficient credits", requestId }, { status: 402, headers: { "X-Request-Id": requestId } });
+    }
     const formData = await request.formData();
     const dish = formData.get("dish");
     const background = formData.get("background");
-    const prompt = String(formData.get("prompt") || "");
     const lensLook = String(formData.get("lensLook") || "");
     const aspectRatio = String(formData.get("aspectRatio") || "");
     const preservePlate = String(formData.get("preservePlate") || "0") === "1";
     const debug = (process.env.DEBUG_ANALYSIS === "1") || (() => { try { return new URL(request.url).searchParams.get("debug") === "1"; } catch { return false; }})();
 
     if (!(dish instanceof File)) {
-      return NextResponse.json({ error: "Missing dish file" }, { status: 400 });
+      await finalizeCredit(supabase, { userId, requestId, success: false });
+      return NextResponse.json({ error: "Missing dish file", requestId }, { status: 400, headers: { "X-Request-Id": requestId } });
     }
 
     // Prefer explicit bgRef; fallback to legacy bgPreset → bgRef mapping
@@ -31,7 +62,8 @@ export async function POST(request: Request) {
     // and request image output. Send the input image as a data URL inside messages.
     const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing AI_GATEWAY_API_KEY" }, { status: 500 });
+      await finalizeCredit(supabase, { userId, requestId, success: false });
+      return NextResponse.json({ error: "Missing AI_GATEWAY_API_KEY", requestId }, { status: 500, headers: { "X-Request-Id": requestId } });
     }
 
     const dishArrayBuffer = await dish.arrayBuffer();
@@ -169,7 +201,7 @@ export async function POST(request: Request) {
         return {
           focalDesc: "85mm / macro portrait look",
           dof: "shallow",
-          subjectOcc: "55–70%",
+          subjectOcc: "70–80%",
           fovHint: "tight composition; compressed background and strong bokeh",
           cropRule: "Frame tight on the dish. If needed, zoom or crop so the subject fills most of the frame with minimal surrounding environment."
         };
@@ -178,7 +210,7 @@ export async function POST(request: Request) {
         return {
           focalDesc: "35mm wide-normal",
           dof: "medium",
-          subjectOcc: "28–40%",
+          subjectOcc: "15–30%",
           fovHint: "wider field of view; more environment visible; gentle bokeh",
           cropRule: "Pull back to include more of the environment around the dish. Keep generous negative space and context."
         };
@@ -186,26 +218,57 @@ export async function POST(request: Request) {
       return {
         focalDesc: "50mm natural perspective",
         dof: "shallow–medium",
-        subjectOcc: "40–55%",
+        subjectOcc: "40–50%",
         fovHint: "balanced FOV; natural background compression",
         cropRule: "Compose with a balanced crop: subject prominent, but leave clear context around it."
       };
     })();
 
-    // Resolve background preset if provided
-    let resolved: any = null;
+    // Resolve background preset if provided; otherwise fall back to a neutral default when no upload
+    let resolved: ResolvedBackground | null = null;
+    let usedFallbackNoBgPreset = false;
     if (effectiveBgRef) {
       try {
         const catalog = await loadCatalog();
-        resolved = resolveBackground(catalog, effectiveBgRef as any);
+        resolved = resolveBackground(catalog, effectiveBgRef as BgRef);
       } catch (e) {
         if (debug) console.log("[bg] resolve error:", e instanceof Error ? e.message : e);
+      }
+    } else if (!backgroundDataUrl) {
+      // No preset and no uploaded background → use a default, neutral v3 template+vars
+      try {
+        const templateAbsPath = path.join(process.cwd(), "templates", "backgrounds-v3.md");
+        const varsAbsPath = path.join(process.cwd(), "templates", "varsv3", "no-background-default.json");
+        resolved = {
+          family: {
+            id: "v3-ambience",
+            label: "Ambience Presets",
+            integration: { type: "template_vars", templatePath: "templates/backgrounds-v3.md", varsDir: "templates/varsv3" },
+            styleProfile: "ambience",
+          },
+          item: {
+            id: "no-background-default",
+            label: "No background (default)",
+            familyId: "v3-ambience",
+            thumbUrl: "/opengraph-image.png",
+            payload: { type: "template_vars", varsFile: "no-background-default.json" },
+          },
+          templateAbsPath,
+          varsAbsPath,
+        };
+        usedFallbackNoBgPreset = true;
+      } catch (e) {
+        if (debug) console.log("[bg] fallback preset error:", e instanceof Error ? e.message : e);
       }
     }
 
     const bgLine = effectiveBgRef
       ? `Environment preset: ${effectiveBgRef} via template + vars`
-      : (backgroundDataUrl ? "Image B: the target environment/background" : "No background provided; synthesize a plausible environment consistent with restaurant photography");
+      : (backgroundDataUrl
+        ? "Image B: the target environment/background"
+        : (usedFallbackNoBgPreset
+          ? "Environment preset: v3-ambience:no-background-default via template + vars"
+          : "No background provided; synthesize a plausible environment consistent with restaurant and dish photography"));
     const platePolicy = preservePlate ? "AND its original plate/vessel exactly" : "ONLY (render a new plate/vessel suitable to the environment)";
 
     const narrativeText = await buildCompositionPrompt({
@@ -215,7 +278,6 @@ export async function POST(request: Request) {
       lensMap,
       aspectRatio: aspectRatio || "original",
       platePolicy,
-      userPrompt: prompt,
     });
 
     const messagesContent: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [
@@ -252,7 +314,8 @@ export async function POST(request: Request) {
 
     if (!resp.ok) {
       const errText = await resp.text();
-      return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}` }, { status: 502 });
+      await finalizeCredit(supabase, { userId, requestId, success: false });
+      return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}`, requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
     const json = (await resp.json()) as unknown;
 
@@ -270,7 +333,8 @@ export async function POST(request: Request) {
       : undefined;
 
     if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("data:image/")) {
-      return NextResponse.json({ error: "No image produced" }, { status: 502 });
+      await finalizeCredit(supabase, { userId, requestId, success: false });
+      return NextResponse.json({ error: "No image produced", requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
 
     const commaIdx = imageUrl.indexOf(",");
@@ -280,14 +344,25 @@ export async function POST(request: Request) {
     const outBuffer = Buffer.from(b64, "base64");
     const outName = outType.includes("jpeg") ? "enhanced.jpg" : outType.includes("png") ? "enhanced.png" : "enhanced.webp";
 
-    return new Response(outBuffer, {
+    // Fetch updated balance and return it in headers to avoid extra client calls
+    let balanceHeader = "";
+    try {
+      const { data: balance } = await supabase.rpc("get_current_credit_balance", { user_id_input: userId });
+      balanceHeader = String(Number(balance ?? 0));
+    } catch {}
+
+    const response = new Response(outBuffer, {
       status: 200,
       headers: {
         "Content-Type": outType,
         "Content-Disposition": `attachment; filename=\"${outName}\"`,
         "Cache-Control": "no-store",
+        "X-Request-Id": requestId,
+        ...(balanceHeader ? { "X-Credit-Balance": balanceHeader } : {}),
       },
     });
+    await finalizeCredit(supabase, { userId, requestId, success: true });
+    return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

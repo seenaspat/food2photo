@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
 import FileUpload from "@/components/kokonutui/file-upload";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { LoginForm } from "@/components/login-form";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info } from "lucide-react";
+import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info, Loader2 } from "lucide-react";
 import {
 	Carousel,
 	CarouselContent,
@@ -19,6 +21,7 @@ import { CarouselDots } from "../../components/ui/carousel";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -61,14 +64,79 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [selectedBackground, setSelectedBackground] = useState<string | null>("none");
 	const [backgroundUpload, setBackgroundUpload] = useState<File | null>(null);
 	const [backgroundPreviewUrl, setBackgroundPreviewUrl] = useState<string | null>(null);
-	const [styleHint, setStyleHint] = useState<string>();
 	const [lens, setLens] = useState<Lens>("85mm/macro");
-	const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
 	const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+	const [variantHint, setVariantHint] = useState<string>("");
+	const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
 	const [aspectRatio, setAspectRatio] = useState<AspectRatioId>("1:1");
 	const [preservePlate, setPreservePlate] = useState<boolean>(false);
 	const [selectedTopdownRef, setSelectedTopdownRef] = useState<string | null>(null);
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
+	const [showPreview, setShowPreview] = useState<boolean>(false);
+	const [creditBalance, setCreditBalance] = useState<number | null>(null);
+	const [downloadFormat, setDownloadFormat] = useState<"png" | "jpeg" | "webp">("png");
+
+	// Persist/restore non-file UI state across auth redirects
+	const STORAGE_KEY = "generatorv1:ui-state";
+	const persistUiState = useCallback(() => {
+		try {
+			const payload = {
+				selectedBackground,
+				selectedTopdownRef,
+				lens,
+				aspectRatio,
+				preservePlate,
+				variantHint,
+			};
+			sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+		} catch {}
+	}, [selectedBackground, selectedTopdownRef, lens, aspectRatio, preservePlate, variantHint]);
+
+	useEffect(() => {
+		try {
+			const raw = sessionStorage.getItem(STORAGE_KEY);
+			if (!raw) return;
+			const parsed = JSON.parse(raw) as Partial<Record<string, unknown>>;
+			if (typeof parsed.selectedBackground === "string") setSelectedBackground(parsed.selectedBackground);
+			if (typeof parsed.selectedTopdownRef === "string") setSelectedTopdownRef(parsed.selectedTopdownRef);
+			if (typeof parsed.lens === "string" && (lensOptions as readonly string[]).includes(parsed.lens as string)) setLens(parsed.lens as Lens);
+			if (typeof parsed.aspectRatio === "string") setAspectRatio(parsed.aspectRatio as AspectRatioId);
+			if (typeof parsed.preservePlate === "boolean") setPreservePlate(parsed.preservePlate);
+			if (typeof parsed.variantHint === "string") setVariantHint(parsed.variantHint);
+			sessionStorage.removeItem(STORAGE_KEY);
+		} catch {}
+	}, []);
+
+  const ensureAuthedOrRedirect = useCallback(async (): Promise<boolean> => {
+		try {
+			const supabase = createClient();
+			const { data } = await supabase.auth.getUser();
+			const isAuthed = Boolean(data.user?.id);
+			if (!isAuthed) {
+        persistUiState();
+        setShowAuthModal(true);
+				return false;
+			}
+			return true;
+		} catch {
+			return true;
+		}
+	}, [persistUiState]);
+
+	const refreshBalance = useCallback(async () => {
+		try {
+			const resp = await fetch("/api/billing/balance", { method: "GET", cache: "no-store" });
+			if (!resp.ok) return;
+			const json = await resp.json();
+			setCreditBalance(typeof json.balance === "number" ? json.balance : Number(json.balance ?? 0));
+		} catch {}
+	}, []);
+
+	useEffect(() => {
+		void refreshBalance();
+	}, []);
 
 	// Search queries for filtering backgrounds
 	const [ambienceQuery, setAmbienceQuery] = useState<string>("");
@@ -157,6 +225,107 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 		return pages;
 	}, [filteredTopdownItems]);
 
+	function slugify(source: string): string {
+		return source
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/(^-|-$)/g, "")
+			.slice(0, 60);
+	}
+
+	const backgroundLabel = useMemo(() => {
+		if (backgroundUpload) return "custom-bg";
+		if (selectedTopdownRef) {
+			const idx = selectedTopdownRef.indexOf(":");
+			const id = idx >= 0 ? selectedTopdownRef.slice(idx + 1) : selectedTopdownRef;
+			const label = topdownItems.find((it) => it.id === id)?.label ?? id;
+			return slugify(label);
+		}
+		if (selectedBackground && selectedBackground !== "none") {
+			const label = backgroundOptions.find((b) => b.id === selectedBackground)?.label ?? selectedBackground;
+			return slugify(label);
+		}
+		return "none";
+	}, [backgroundUpload, selectedTopdownRef, selectedBackground, backgroundOptions, topdownItems]);
+
+	const shortUuid = useCallback((): string => {
+		try {
+			return crypto.randomUUID().slice(0, 8);
+		} catch {
+			try {
+				const arr = new Uint8Array(4);
+				crypto.getRandomValues(arr);
+				return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+			} catch {
+				return Math.random().toString(36).slice(2, 10);
+			}
+		}
+	}, []);
+
+	const convertBlobToFormat = useCallback(async (blob: Blob, format: "png" | "jpeg" | "webp"): Promise<Blob> => {
+		const mime = format === "png" ? "image/png" : format === "jpeg" ? "image/jpeg" : "image/webp";
+		const quality: number | undefined = format === "png" ? undefined : 0.92;
+		let bitmap: ImageBitmap | null = null;
+		try {
+			if (typeof createImageBitmap === "function") {
+				bitmap = await createImageBitmap(blob);
+			}
+		} catch {}
+
+		const canvas = document.createElement("canvas");
+		const ctx = canvas.getContext("2d");
+		if (!ctx) throw new Error("Canvas 2D context unavailable");
+
+		if (bitmap) {
+			canvas.width = bitmap.width;
+			canvas.height = bitmap.height;
+			ctx.drawImage(bitmap, 0, 0);
+			bitmap.close?.();
+		} else {
+			const url = URL.createObjectURL(blob);
+			try {
+				const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+					const i = new Image();
+					i.onload = () => resolve(i);
+					i.onerror = reject;
+					i.src = url;
+				});
+				canvas.width = img.naturalWidth || img.width;
+				canvas.height = img.naturalHeight || img.height;
+				ctx.drawImage(img, 0, 0);
+			} finally {
+				URL.revokeObjectURL(url);
+			}
+		}
+
+		const converted = await new Promise<Blob>((resolve, reject) => {
+			canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Conversion failed"))), mime, quality);
+		});
+		return converted;
+	}, []);
+
+	const handleDownload = useCallback(async () => {
+		if (!generatedImageUrl) return;
+		try {
+			const srcBlob = await fetch(generatedImageUrl).then((r) => r.blob());
+			const outBlob = await convertBlobToFormat(srcBlob, downloadFormat);
+			const ext = downloadFormat === "jpeg" ? "jpg" : downloadFormat;
+			const filename = `food2photo-${backgroundLabel}-${shortUuid()}.${ext}`;
+			const file = new File([outBlob], filename, { type: outBlob.type || (downloadFormat === "png" ? "image/png" : downloadFormat === "jpeg" ? "image/jpeg" : "image/webp") });
+			const url = URL.createObjectURL(file);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = filename;
+			a.setAttribute("download", filename);
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		} catch (e) {
+			console.error(e);
+		}
+	}, [generatedImageUrl, downloadFormat, convertBlobToFormat, backgroundLabel, shortUuid]);
+
 	return (
 		<div className="container mx-auto px-4 py-6">
 			<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -238,14 +407,14 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																	{page.map((bg, itemIndex) =>
 																		bg ? (
 																			<button key={bg.id} onClick={() => { setSelectedBackground(bg.id); setSelectedTopdownRef(null); }} className="text-left">
-																				<Card className={selectedBackground === bg.id ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
-																					<CardContent className="p-0">
-																						<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
-																							{bg.id === "none" ? (
-																								<ImageIcon className="h-8 w-8 text-muted-foreground" />
-																							) : (
-																								<img src={bg.thumb} alt={bg.label} className="h-full w-full object-cover" />
-																							)}
+																			<Card className={selectedBackground === bg.id ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
+																				<CardContent className="p-0">
+																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+																						{bg.id === "none" ? (
+																							<ImageIcon className="h-8 w-8 text-muted-foreground" />
+																						) : (
+																							<img src={bg.thumb} alt={bg.label} className="h-full w-full object-cover" />
+																						)}
 																					</div>
 																					<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{bg.label}</div>
 																				</CardContent>
@@ -254,16 +423,16 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																	) : (
 																		<div key={`placeholder-${pageIndex}-${itemIndex}`} />
 																	)
-															)}
-														</div>
-													</CarouselItem>
+																)}
+															</div>
+														</CarouselItem>
 													))}
 												</CarouselContent>
 											</div>
 											<CarouselNext className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
-										</div>
-										<CarouselDots count={backgroundPages.length} className="mt-4" />
-									</Carousel>
+											</div>
+											<CarouselDots count={backgroundPages.length} className="mt-4" />
+										</Carousel>
 									</TabsContent>
 									<TabsContent value="topview">
 										<div className="mb-3 relative">
@@ -281,15 +450,15 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																	{page.map((it, itemIndex) =>
 																		it ? (
 																			<button key={it.id} onClick={() => { const ref = `v4-topdown:${it.id}`; setSelectedTopdownRef(ref); setSelectedBackground('none'); }} className="text-left">
-																				<Card className={selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
-																					<CardContent className="p-0">
-																						<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
-																							<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
-																						</div>
-																						<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
-																					</CardContent>
-																				</Card>
-																			</button>
+																			<Card className={selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
+																				<CardContent className="p-0">
+																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+																						<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
+																					</div>
+																					<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
+																				</CardContent>
+																			</Card>
+																		</button>
 																	) : (
 																		<div key={`placeholder-${pageIndex}-${itemIndex}`} />
 																	)
@@ -300,9 +469,9 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 												</CarouselContent>
 											</div>
 											<CarouselNext className="static inset-auto translate-x-0 translate-y-0 shrink-0" />
-										</div>
-										<CarouselDots count={topdownPages.length} className="mt-4" />
-									</Carousel>
+											</div>
+											<CarouselDots count={topdownPages.length} className="mt-4" />
+										</Carousel>
 									</TabsContent>
 									<TabsContent value="upload">
 										<div className="space-y-3">
@@ -338,14 +507,14 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 							</div>
 						</CardContent>
 					</Card>
-
+				</div>
+                <div className="space-y-4">
 					<Card>
 						<CardHeader>
-							<CardTitle>3) Style & Output</CardTitle>
+							<CardTitle>3) Camera & Style</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<div className="space-y-4">
-								<Textarea value={styleHint} onChange={(e) => setStyleHint(e.target.value)} maxLength={250} placeholder="Describe details of the image scenery, style, etc." />
 								<div className="space-y-2">
 									<div className="text-sm font-medium">Lens Look</div>
 									<Tabs value={lens} onValueChange={(v) => setLens(v as Lens)} className="w-full">
@@ -364,11 +533,11 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 												const Icon = opt.icon;
 												return (
 													<TabsTrigger key={opt.id} value={opt.id} className="flex items-center gap-2">
-													<Icon className="h-4 w-4" />
-													{opt.label}
-												</TabsTrigger>
-											);
-										})}
+														<Icon className="h-4 w-4" />
+														{opt.label}
+													</TabsTrigger>
+												);
+											})}
 										</TabsList>
 									</Tabs>
 								</div>
@@ -376,11 +545,10 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						</CardContent>
 					</Card>
 
-					<Button className="w-full" size="lg" disabled={!canEnhance || isGenerating} onClick={async () => {
-						if (!uploaded) return;
-						try {
-							setIsGenerating(true);
-							setGeneratedImageUrl(null);
+                  <Button className="w-full" size="lg" disabled={!canEnhance || isGenerating} onClick={async () => {
+                    if (!uploaded) return;
+                    try {
+                      // Only flip state after auth succeeds
 							const fd = new FormData();
 							fd.append("dish", uploaded);
 							if (backgroundUpload) {
@@ -394,25 +562,43 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 									fd.append("bgRef", `v3-ambience:${selected.preset}`);
 								}
 							}
-							fd.append("prompt", styleHint ?? "");
 							fd.append("lensLook", lens);
 							fd.append("aspectRatio", aspectRatio);
 							fd.append("preservePlate", preservePlate ? "1" : "0");
-							const debugSuffix = (() => {
+                      const debugSuffix = (() => {
 								try {
 									const p = new URLSearchParams(window.location.search);
 									return p.get('debug') === '1' ? '?debug=1' : '';
 								} catch { return ''; }
 							})();
-							const resp = await fetch(`/api/generate${debugSuffix}`, { method: "POST", body: fd });
-							if (!resp.ok) {
-								let details = "";
-								try { details = await resp.text(); } catch {}
-								throw new Error(`Generation failed: ${resp.status}${details ? ` - ${details}` : ""}`);
-							}
+          // Require auth at action time
+          const authed = await ensureAuthedOrRedirect();
+          if (!authed) return;
+          setIsGenerating(true);
+          setShowPreview(true);
+          setGeneratedImageUrl(null);
+					const resp = await fetch(`/api/generate${debugSuffix}`, { method: "POST", body: fd });
+					if (!resp.ok) {
+                        if (resp.status === 401) {
+                          persistUiState();
+                          setShowAuthModal(true);
+                          return;
+                        }
+						if (resp.status === 402) {
+							window.location.href = "/pricing?need_credits=1";
+							return;
+						}
+						let details = "";
+						try { details = await resp.text(); } catch {}
+						throw new Error(`Generation failed: ${resp.status}${details ? ` - ${details}` : ""}`);
+					}
 							const blob = await resp.blob();
 							const url = URL.createObjectURL(blob);
 							setGeneratedImageUrl(url);
+							try {
+								const headerBal = resp.headers.get("X-Credit-Balance");
+								if (headerBal) setCreditBalance(Number(headerBal));
+							} catch {}
 						} catch (e) {
 							console.error(e);
 						} finally {
@@ -421,41 +607,125 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 					}}>
 						{isGenerating ? "Enhancing..." : "Enhance Photo"}
 					</Button>
-				</div>
 
-				<div className="space-y-4">
-					<Card>
-						<CardHeader>
-							<CardTitle className="flex items-center justify-between">
-								<span>Preview</span>
-								<span className="text-xs font-normal text-muted-foreground flex items-center gap-2">Lens: {lens} · Ratio: {aspectRatio} {preservePlate ? (<Badge variant="secondary">Plate kept</Badge>) : (<Badge variant="outline">Plate may change</Badge>)}</span>
-							</CardTitle>
-						</CardHeader>
-						<CardContent>
-							{generatedImageUrl ? (
-								<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
-							) : (
-								<div className="aspect-square rounded-md border flex items-center justify-center bg-muted">
-									<ImageIcon className="h-10 w-10 text-muted-foreground" />
-								</div>
-							)}
-							<div className="mt-4 flex items-center gap-2">
+                  <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
+                    <DialogContent className="max-h-[85vh] overflow-y-auto p-0">
+                      <DialogTitle className="sr-only">Sign in</DialogTitle>
+                      <LoginForm
+                        className="max-w-none"
+                        onSuccess={() => {
+                          setShowAuthModal(false);
+                        }}
+                      />
+                    </DialogContent>
+                  </Dialog>
+
+					{showPreview && (
+						<Card>
+							<CardHeader>
+								<CardTitle className="flex items-center justify-between">
+									<span>Preview</span>
+									<span className="text-xs font-normal text-muted-foreground flex items-center gap-2">Lens: {lens} · Ratio: {aspectRatio} {preservePlate ? (<Badge variant="secondary">Plate kept</Badge>) : (<Badge variant="outline">Plate may change</Badge>)}</span>
+								</CardTitle>
+							</CardHeader>
+							<CardContent>
+								{(isRegenerating || !generatedImageUrl) ? (
+									<div className="w-full">
+										<div className="aspect-square w-full rounded-md border bg-muted animate-pulse" />
+										<div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+											<Loader2 className="h-4 w-4 animate-spin" />
+											<span>{isRegenerating ? "Regenerating..." : "Generating..."}</span>
+										</div>
+										<div className="mt-2 space-y-2">
+											<div className="h-3 w-1/3 rounded bg-muted animate-pulse" />
+											<div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
+										</div>
+									</div>
+								) : (
+									<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
+								)}
 								{generatedImageUrl ? (
-									<a href={generatedImageUrl} download className="inline-flex">
-										<Button className="gap-2" asChild>
-											<span>
-												<Download className="h-4 w-4" /> Download
-												</span>
+								<>
+									<div className="mt-4">
+										<Input
+											value={variantHint}
+											onChange={(e) => setVariantHint(e.target.value)}
+											placeholder="Add a short hint to tweak the image..."
+											maxLength={250}
+										/>
+									</div>
+									<div className="mt-2 text-xs text-muted-foreground">{creditBalance !== null ? `Credits: ${creditBalance}` : null}</div>
+									<div className="mt-4 flex items-center justify-between gap-2">
+										<Button variant="secondary" disabled={isRegenerating || variantHint.trim().length === 0}
+											onClick={async () => {
+												if (!generatedImageUrl) return;
+												try {
+													setIsRegenerating(true);
+						const authed = await ensureAuthedOrRedirect();
+						if (!authed) return;
+						const baseBlob = await fetch(generatedImageUrl).then((r) => r.blob());
+													const fd = new FormData();
+													fd.append("image", baseBlob, "base.jpg");
+													fd.append("hint", variantHint.trim());
+							const resp = await fetch("/api/variant", { method: "POST", body: fd });
+							if (!resp.ok) {
+								if (resp.status === 401) {
+									persistUiState();
+									window.location.href = "/auth/login?next=/generatorv1";
+									return;
+								}
+								if (resp.status === 402) {
+									window.location.href = "/pricing?need_credits=1";
+									return;
+								}
+														let details = "";
+														try { details = await resp.text(); } catch {}
+														throw new Error(`Variant failed: ${resp.status}${details ? ` - ${details}` : ""}`);
+													}
+													const blob = await resp.blob();
+													const url = URL.createObjectURL(blob);
+													try { URL.revokeObjectURL(generatedImageUrl); } catch {}
+													setGeneratedImageUrl(url);
+													setVariantHint("");
+													try {
+														const headerBal = resp.headers.get("X-Credit-Balance");
+														if (headerBal) setCreditBalance(Number(headerBal));
+													} catch {}
+												} catch (e) {
+													console.error(e);
+												} finally {
+													setIsRegenerating(false);
+												}
+											}}>
+											{isRegenerating ? "Regenerating..." : "Regenerate"}
+										</Button>
+										<div className="flex items-center gap-2">
+											<Select value={downloadFormat} onValueChange={(v) => setDownloadFormat(v as "png" | "jpeg" | "webp")}>
+												<SelectTrigger className="w-[130px]">
+													<SelectValue placeholder="Format" />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="png">PNG</SelectItem>
+													<SelectItem value="jpeg">JPEG</SelectItem>
+													<SelectItem value="webp">WebP</SelectItem>
+												</SelectContent>
+											</Select>
+											<Button className="gap-2" onClick={handleDownload} disabled={!generatedImageUrl}>
+												<Download className="h-4 w-4" /> Download {downloadFormat.toUpperCase()}
 											</Button>
-										</a>
-									) : (
+										</div>
+									</div>
+								</>
+							) : (
+								<div className="mt-4 flex items-center gap-2">
 									<Button className="gap-2" disabled>
 										<Download className="h-4 w-4" /> Download
 									</Button>
-								)}
-							</div>
-						</CardContent>
-					</Card>
+								</div>
+							)}
+							</CardContent>
+						</Card>
+					)}
 				</div>
 			</div>
 		</div>

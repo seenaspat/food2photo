@@ -1,0 +1,79 @@
+{
+  "version": "1",
+  "constraints": {
+    "apply_scope": ["grade_only", "environment_defaults"],
+    "mood": ["bright", "cozy", "dramatic", "neutral"],
+    "palette": ["warm", "cool", "neutral"],
+    "lighting": {
+      "key_direction": ["left", "right", "top", "bottom"],
+      "softness": ["very soft", "soft", "medium"],
+      "glare_policy": ["suppress", "preserve_band"],
+      "color_temp_k": { "min": 4000, "max": 6500, "default": 5200 },
+      "fill_color_temp_k": { "min": 4500, "max": 7000, "default": 5600 },
+      "fill_ev": { "min": 1.0, "max": 1.8, "default": 1.3 }
+    },
+    "grade": {
+      "contrast": ["low", "normal", "high"],
+      "saturation": ["low", "natural", "high"]
+    },
+    "surface": {
+      "base": ["wood", "marble", "slate", "concrete", "tile", "linen", "paper", "metal", null],
+      "grain_direction": ["left→right", "top→bottom", "diagonal"],
+      "finish": ["matte", "honed", "satin"],
+      "seam_style": ["none", "plank seams", "tile grout"],
+      "seam_spacing_mm": { "min": 0, "max": 20 },
+      "seam_thickness_mm": { "min": 0, "max": 6 }
+    },
+    "props": {
+      "density": ["none", "sparse", "some"],
+      "textiles": ["none", "linen_corner", "linen_side"],
+      "utensils": ["none", "fork_knife_perimeter", "chopsticks_perimeter", "spoon_perimeter"],
+      "scatter_policy": ["none", "subtle"]
+    },
+    "ambience_bias": ["rustic", "fine_dining_minimal", "cafe", "industrial", "farmhouse", "modern", "neutral"]
+  },
+  "confidence": 0.0,
+  "apply_scope": "",
+  "parsed": {
+    "mood": "",
+    "palette": "",
+    "lighting": {
+      "key_direction": "",
+      "softness": "",
+      "color_temp_k": null,
+      "fill_color_temp_k": null,
+      "fill_ev": null,
+      "glare_policy": ""
+    },
+    "grade": {
+      "contrast": "",
+      "saturation": ""
+    },
+    "surface": {
+      "base": null,
+      "color": null,
+      "grain_direction": "",
+      "finish": "",
+      "seam_style": "",
+      "seam_spacing_mm": null,
+      "seam_thickness_mm": null
+    },
+    "props": {
+      "density": "",
+      "textiles": "",
+      "utensils": "",
+      "scatter_policy": ""
+    },
+    "ambience_bias": "",
+    "notes": []
+  },
+  "rejections": [
+    {
+      "intent": "",
+      "reason": "",
+      "downgrade_to": ""
+    }
+  ]
+}
+
+

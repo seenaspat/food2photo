@@ -17,7 +17,7 @@ export async function updateSession(request: NextRequest) {
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY!,
     {
       cookies: {
         getAll() {
@@ -42,10 +42,11 @@ export async function updateSession(request: NextRequest) {
   // supabase.auth.getClaims(). A simple mistake could make it very hard to debug
   // issues with users being randomly logged out.
 
-  // IMPORTANT: If you remove getClaims() and you use server-side rendering
-  // with the Supabase client, your users may be randomly logged out.
-  const { data } = await supabase.auth.getClaims();
-  const user = data?.claims;
+  // IMPORTANT: keep getClaims() to ensure cookie/session refresh
+  await supabase.auth.getClaims();
+  // Use getUser() for reliable presence checks
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
   const disableAuthGuard =
     process.env.NODE_ENV !== "production" &&
     process.env.NEXT_PUBLIC_DISABLE_AUTH_GUARD === "true";
@@ -60,6 +61,16 @@ export async function updateSession(request: NextRequest) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
+    return NextResponse.redirect(url);
+  }
+
+  // If user is already authenticated and navigates to auth pages, redirect to app
+  if (
+    user &&
+    (request.nextUrl.pathname.startsWith("/auth") || request.nextUrl.pathname === "/login")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/generatorv1";
     return NextResponse.redirect(url);
   }
 

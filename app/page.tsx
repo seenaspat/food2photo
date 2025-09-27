@@ -1,40 +1,35 @@
-import { DeployButton } from "@/components/deploy-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
 import { Hero } from "@/components/hero";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { ConnectSupabaseSteps } from "@/components/tutorial/connect-supabase-steps";
-import { SignUpUserSteps } from "@/components/tutorial/sign-up-user-steps";
-import { hasEnvVars } from "@/lib/utils";
-import Link from "next/link";
+import { FeatureAcrossDevices } from "@/components/feature-across-devices";
+import { FeatureSplit } from "@/components/feature-split";
+import { FAQ } from "@/components/faq";
 
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center">
-      <div className="flex-1 w-full flex flex-col gap-20 items-center">
+      <div className="flex-1 w-full flex flex-col gap-12 items-center">
         {/* Navbar moved to RootLayout via <SiteNavbar /> */}
-        <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
-          <Hero />
-          <main className="flex-1 flex flex-col gap-6 px-4">
-            <h2 className="font-medium text-xl mb-4">Next steps</h2>
-            {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
-          </main>
-        </div>
-
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <p>
-            Powered by{" "}
-            <a
-              href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-              target="_blank"
-              className="font-bold hover:underline"
-              rel="noreferrer"
-            >
-              Supabase
-            </a>
-          </p>
-          <ThemeSwitcher />
-        </footer>
+        <Hero />
+        <section id="features" className="flex-1 flex flex-col gap-12 w-full p-5 scroll-mt-[var(--navbar-h,64px)]">
+          <FeatureAcrossDevices />
+          <FeatureSplit
+            title="Your Visual Style, Locked In."
+            description="Create a consistent look across your entire menu. Our AI templates act as your brand's style guide, ensuring every photo—from your website to your delivery apps—shares a cohesive, professional aesthetic. No more random, mismatched shots."
+            ctaHref="/generatorv1"
+            ctaText="Find Your Style"
+            desktopImageSrc="/feature2-main.webp"
+            phoneImageSrc="/backgrounds/v3-003/bg-v3-chiringuito-seafood-role-you-are-a-restaurant-ambience-stylist-for-2025-09-07T20-50-24-733Z-szr0bo.png"
+            reverse
+          />
+          <FeatureSplit
+            title="The Final Touch is Yours."
+            description="Use simple text prompts to add the final, creative touch. Add a side of fries, swap the plate, or see what a sprinkle of chili flakes looks like. It’s your tool to refine a great shot until it’s absolutely perfect."
+            ctaHref="/generatorv1"
+            ctaText="Add Your Touch"
+            desktopImageSrc="/feature3-main.webp"
+            phoneImageSrc="/backgrounds/v4-003/bg-v4-overhead-slate-minimal-sushi-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-13-06-842Z-u5iyra.png"
+          />
+          <FAQ />
+        </section>
       </div>
     </main>
   );
