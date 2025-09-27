@@ -51,12 +51,22 @@ export async function updateSession(request: NextRequest) {
     process.env.NODE_ENV !== "production" &&
     process.env.NEXT_PUBLIC_DISABLE_AUTH_GUARD === "true";
 
+  const pathname = request.nextUrl.pathname;
+  const isAuthRoute = pathname.startsWith("/auth") || pathname.startsWith("/login");
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname === "/pricing" ||
+    pathname === "/terms" ||
+    pathname === "/privacy" ||
+    pathname === "/contact" ||
+    pathname === "/features" ||
+    pathname.startsWith("/api/");
+
   if (
     !disableAuthGuard &&
-    request.nextUrl.pathname !== "/" &&
     !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
+    !isPublicRoute &&
+    !isAuthRoute
   ) {
     // no user, potentially respond by redirecting the user to the login page
     const url = request.nextUrl.clone();
@@ -67,7 +77,7 @@ export async function updateSession(request: NextRequest) {
   // If user is already authenticated and navigates to auth pages, redirect to app
   if (
     user &&
-    (request.nextUrl.pathname.startsWith("/auth") || request.nextUrl.pathname === "/login")
+    (pathname.startsWith("/auth") || pathname === "/login")
   ) {
     const url = request.nextUrl.clone();
     url.pathname = "/generatorv1";
