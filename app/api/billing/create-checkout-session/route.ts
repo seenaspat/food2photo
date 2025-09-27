@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 
 const InputSchema = z.union([
   z.object({ planCode: z.string().min(1), creditPackTokens: z.never().optional() }),
-  z.object({ creditPackTokens: z.number().int().positive(), planCode: z.never().optional() }),
+  z.object({ creditPackTokens: z.number().int().positive(), planCode: z.never().optional(), creditLookupKey: z.string().min(1).optional() }),
 ]);
 
 export async function POST(request: Request) {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid input", details: parsed.error.issues }, { status: 400 });
     }
-    const data = parsed.data as { planCode?: string; creditPackTokens?: number };
+    const data = parsed.data as { planCode?: string; creditPackTokens?: number; creditLookupKey?: string };
 
     const supabase = await createClient();
     const stripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -55,7 +55,8 @@ export async function POST(request: Request) {
       .single();
     const existingCustomerId: string | null = (activeSub?.stripe_customer_id ?? anySub?.stripe_customer_id ?? null) as string | null;
 
-    if (activeSub) {
+    // Redirect subscribed users to the Billing Portal only when attempting to start a new subscription.
+    if (data.planCode && activeSub) {
       if (!existingCustomerId) {
         return NextResponse.json({ error: "Subscription exists but no Stripe customer associated. Please contact support." }, { status: 400 });
       }
@@ -114,14 +115,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ url: session.url }, { status: 200 });
     }
 
-    const creditPriceId = process.env.STRIPE_CREDIT_PRICE_ID;
-    if (!creditPriceId) return NextResponse.json({ error: "Missing STRIPE_CREDIT_PRICE_ID" }, { status: 500 });
-
     const creditPackTokens = data.creditPackTokens as number;
-    const creditPriceIdStr: string = creditPriceId as string;
+    // Choose price via lookup_key when provided; fallback to single env price id
+    let priceIdForCredits: string | null = null;
+    if (data.creditLookupKey) {
+      try {
+        const search = await stripe.prices.search({ query: `lookup_key:'${data.creditLookupKey}' AND active:'true'`, limit: 1 });
+        priceIdForCredits = search.data?.[0]?.id ?? null;
+      } catch {}
+    }
+    if (!priceIdForCredits) {
+      const creditPriceId = process.env.STRIPE_CREDIT_PRICE_ID;
+      if (!creditPriceId) return NextResponse.json({ error: "Missing STRIPE_CREDIT_PRICE_ID" }, { status: 500 });
+      priceIdForCredits = creditPriceId as string;
+    }
+
     const paymentParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
-      line_items: [{ price: creditPriceIdStr, quantity: 1 }],
+      line_items: [{ price: priceIdForCredits as string, quantity: 1 }],
       success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing?topup_success=1`,
       cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing?topup_canceled=1`,
       metadata: { user_id: uid, credit_tokens: String(creditPackTokens) },

@@ -19,52 +19,53 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const plans = [
   {
-    id: "hobby",
-    name: "Hobby",
+    id: "basic",
+    name: "Basic",
     price: {
-      monthly: "Free forever",
-      yearly: "Free forever",
+      monthly: "$9/month",
+      yearly: "Monthly only",
     },
-    description: "Perfect to try Food2Photo and share a few results.",
+    description: "Great for solo owners who need a few shots each month.",
     features: [
       "20 generations / month",
-      "Upload dish + optional background",
-      "Lens look & aspect ratio controls",
-      "Standard quality outputs",
-      "Basic email support",
+      "Upload dish & background",
+      "Lens looks & aspect ratios",
+      "Curated presets & style templates",
+      "Standard-quality PNG/JPEG outputs",
+      "Standard support & reliable processing",
     ],
-    cta: "Get started for free",
+    cta: "Subscribe to Basic",
   },
   {
     id: "pro",
     name: "Pro",
     price: {
-      monthly: 19,
-      yearly: 15,
+      monthly: 29,
+      yearly: 278, // used only as a fallback; live prices come from Stripe
     },
-    description: "Everything you need for consistent, production-quality photos.",
+    description: "Everything you need for consistent, production‑quality photos.",
     features: [
-      "Unlimited generations",
-      "Background presets & style templates",
-      "Priority queue + faster processing",
+      "100 generations / month",
+      "Upload dish & background customization",
+      "Advanced lens looks & aspect ratios",
+      "Full preset library & pro templates",
       "High-quality PNG/JPEG outputs",
-      "Priority email support",
+      "Priority support + priority queue",
     ],
     cta: "Subscribe to Pro",
     popular: true,
   },
   {
     id: "enterprise",
-    name: "Enterprise",
+    name: "Business",
     price: {
-      monthly: "Get in touch for pricing",
-      yearly: "Get in touch for pricing",
+      monthly: "Get in touch",
+      yearly: "Get in touch",
     },
-    description: "Security, customization and higher throughput for teams.",
+    description: "Custom backgrounds, presets and integrations.",
     features: [
-      "Custom presets & model configuration",
+      "Custom backgrounds & presets",
       "SLAs and priority support",
-      "Team seats & role-based access",
       "Usage-based throughput guarantees",
       "Custom integrations",
     ],
@@ -78,7 +79,11 @@ export default function PricingPage() {
   const [subscribed, setSubscribed] = useState<boolean>(false);
   const [renewAt, setRenewAt] = useState<string | null>(null);
   const [isAuthed, setIsAuthed] = useState<boolean>(false);
-  const [stripePrices, setStripePrices] = useState<{ monthly?: { unit_amount: number | null, currency: string | null }, yearly?: { unit_amount: number | null, currency: string | null } }>({});
+  const [prices, setPrices] = useState<{
+    pro?: { monthly?: { unit_amount: number | null; currency: string | null }; yearly?: { unit_amount: number | null; currency: string | null } };
+    basic?: { monthly?: { unit_amount: number | null; currency: string | null } };
+    credits?: { c10?: { unit_amount: number | null; currency: string | null }; c50?: { unit_amount: number | null; currency: string | null } };
+  }>({});
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
   const [loadingBilling, setLoadingBilling] = useState<boolean>(true);
   const [loadingPrices, setLoadingPrices] = useState<boolean>(true);
@@ -106,7 +111,7 @@ export default function PricingPage() {
       try {
         const r = await fetch("/api/billing/prices", { method: "GET", cache: "no-store" });
         const j = await r.json();
-        setStripePrices(j?.pro ?? {});
+        setPrices(j ?? {});
       } catch {} finally { setLoadingPrices(false); }
     })();
   }, []);
@@ -127,6 +132,39 @@ export default function PricingPage() {
       alert("Could not start checkout. Please try again.");
     }
   }, [proPlanPriceId]);
+
+  const createBasicCheckout = useCallback(async () => {
+    try {
+      const body = { planCode: "basic_monthly" };
+      const res = await fetch("/api/billing/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Checkout failed");
+      if (json?.url) window.location.href = json.url as string;
+    } catch (e) {
+      console.error(e);
+      alert("Could not start checkout. Please try again.");
+    }
+  }, []);
+
+  const buyCredits = useCallback(async (lookupKey: string, tokens: number) => {
+    try {
+      const res = await fetch("/api/billing/create-checkout-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ creditPackTokens: tokens, creditLookupKey: lookupKey }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Checkout failed");
+      if (json?.url) window.location.href = json.url as string;
+    } catch (e) {
+      console.error(e);
+      alert("Could not start checkout. Please try again.");
+    }
+  }, []);
 
   const openPortal = useCallback(async () => {
     try {
@@ -149,10 +187,18 @@ export default function PricingPage() {
           Managing a business is hard enough, so why not make your life easier?
           Our pricing plans are simple, transparent and scale with you.
         </p>
-        <Tabs defaultValue={frequency} onValueChange={setFrequency}>
-          <TabsList>
-            <TabsTrigger value="monthly">Monthly</TabsTrigger>
-            <TabsTrigger value="yearly">
+        <Tabs value={frequency} onValueChange={setFrequency}>
+          <TabsList className="rounded-full bg-zinc-100 dark:bg-zinc-900 p-1 ring-1 ring-zinc-300 dark:ring-zinc-700">
+            <TabsTrigger
+              value="monthly"
+              className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
+            >
+              Monthly
+            </TabsTrigger>
+            <TabsTrigger
+              value="yearly"
+              className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
+            >
               Yearly
               <Badge variant="secondary">20% off</Badge>
             </TabsTrigger>
@@ -180,7 +226,7 @@ export default function PricingPage() {
                   <p>{plan.description}</p>
                   {plan.id === "pro" ? (
                     (() => {
-                      const p = frequency === "yearly" ? stripePrices.yearly : stripePrices.monthly;
+                      const p = frequency === "yearly" ? prices.pro?.yearly : prices.pro?.monthly;
                       const amount = p?.unit_amount ?? null;
                       const currency = (p?.currency ?? "USD").toUpperCase();
                       if (loadingPrices) {
@@ -206,6 +252,30 @@ export default function PricingPage() {
                         <span className="font-medium text-foreground">
                           {plan.price[frequency as keyof typeof plan.price]}.
                         </span>
+                      );
+                    })()
+                  ) : plan.id === "basic" ? (
+                    (() => {
+                      const p = prices.basic?.monthly;
+                      const amount = p?.unit_amount ?? null;
+                      const currency = (p?.currency ?? "USD").toUpperCase();
+                      if (loadingPrices) {
+                        return (
+                          <span className="inline-block h-5 w-28 rounded bg-muted animate-pulse" aria-busy="true" />
+                        );
+                      }
+                      if (typeof amount === "number") {
+                        return (
+                          <NumberFlow
+                            className="font-medium text-foreground"
+                            format={{ style: "currency", currency, maximumFractionDigits: 0 }}
+                            suffix="/month"
+                            value={Math.round(amount) / 100}
+                          />
+                        );
+                      }
+                      return (
+                        <span className="font-medium text-foreground">{plan.price.monthly}.</span>
                       );
                     })()
                   ) : (
@@ -236,9 +306,9 @@ export default function PricingPage() {
                     {subscribed ? "Manage billing" : (isAuthed ? plan.cta : "Log in to subscribe")}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
-                ) : plan.id === "hobby" ? (
-                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/auth/sign-up") }>
-                    {plan.cta}
+                ) : plan.id === "basic" ? (
+                  <Button className="w-full" variant="secondary" onClick={isAuthed ? createBasicCheckout : () => (window.location.href = "/auth/login") }>
+                    {isAuthed ? plan.cta : "Log in to subscribe"}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 ) : (
@@ -250,6 +320,41 @@ export default function PricingPage() {
               </CardFooter>
             </Card>
           ))}
+        </div>
+        <div className="mt-10 w-full max-w-4xl text-left">
+          <h2 className="text-lg font-medium mb-3">Buy credits</h2>
+          <p className="text-sm text-muted-foreground mb-4">1 credit = 1 image generation. Perfect for occasional top‑ups.</p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              { key: "credits_10", label: "10 Credits", tokens: 10, price: prices.credits?.c10 },
+              { key: "credits_50", label: "50 Credits", tokens: 50, price: prices.credits?.c50 },
+            ].map((pack) => (
+              <Card key={pack.key}>
+                <CardHeader>
+                  <CardTitle className="text-base">{pack.label}</CardTitle>
+                  <CardDescription>
+                    {loadingPrices ? (
+                      <span className="inline-block h-5 w-24 rounded bg-muted animate-pulse" aria-busy="true" />
+                    ) : typeof pack.price?.unit_amount === "number" ? (
+                      <NumberFlow
+                        className="font-medium text-foreground"
+                        format={{ style: "currency", currency: (pack.price?.currency ?? "USD").toUpperCase(), maximumFractionDigits: 0 }}
+                        value={Math.round(pack.price.unit_amount) / 100}
+                      />
+                    ) : (
+                      <span className="font-medium text-foreground">{pack.key === "credits_10" ? "$5" : "$18"}</span>
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardFooter>
+                  <Button className="w-full" variant="secondary" onClick={isAuthed ? () => buyCredits(pack.key, pack.tokens) : () => (window.location.href = "/auth/login")}>
+                    {isAuthed ? "Buy credits" : "Log in to buy"}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
         </div>
         <div className="mt-2 text-sm text-muted-foreground min-h-5">
           {loadingBilling ? (

@@ -20,16 +20,6 @@ export function SiteFooter() {
                 <Instagram className="size-4" />
               </Link>
             </Button>
-            <Button asChild variant="ghost" size="icon" aria-label="GitHub">
-              <Link href="https://github.com/" target="_blank" rel="noreferrer">
-                <Github className="size-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="ghost" size="icon" aria-label="Email">
-              <Link href="mailto:support@food2photo.app">
-                <Mail className="size-4" />
-              </Link>
-            </Button>
           </div>
         </div>
 
