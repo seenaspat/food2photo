@@ -14,12 +14,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AuthMenuClient } from "@/components/auth-menu-client";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetHeader, SheetFooter, SheetClose } from "@/components/ui/sheet";
+import { usePathname } from "next/navigation";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { createClient } from "@/lib/supabase/client";
 
 export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: boolean }) {
   const headerRef = useRef<HTMLElement | null>(null);
+  const pathname = usePathname?.() ?? "/";
   const [isAuthed, setIsAuthed] = useState<boolean>(initialIsAuthed);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -89,14 +91,10 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                 </NavigationMenuItem>
                 {isAuthed ? (
                   <NavigationMenuItem>
-                    <Button asChild size="default" variant="outline">
-                      <Link
-                        href="/generatorv1"
-                      >
-                        <span>Generate</span>
-                        <Sparkles className="h-4 w-4" />
-                      </Link>
-                    </Button>
+                    <Link href="/generatorv1" className="inline-flex items-center gap-1.5 p-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground transition-colors">
+                      <span>Generate</span>
+                      <Sparkles className="h-4 w-4 text-primary" />
+                    </Link>
                   </NavigationMenuItem>
                 ) : null}
               </NavigationMenuList>
@@ -152,32 +150,41 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                 <Menu />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-64">
-              <SheetTitle className="sr-only">Mobile navigation</SheetTitle>
-              <nav className="mt-8 grid gap-2">
-                <Button asChild variant="ghost" className="justify-start">
-                  <Link href="/#features">Features</Link>
-                </Button>
-                <Button asChild variant="ghost" className="justify-start">
-                  <Link href="/pricing">Pricing</Link>
-                </Button>
-                {isAuthed ? (
-                  <Button asChild variant="default" size="default" className="justify-start">
-                    <Link href="/generatorv1" className="inline-flex items-center gap-2">
-                      <span>Generate</span>
-                      <Sparkles className="h-4 w-4 text-primary-foreground" />
-                    </Link>
+            <SheetContent side="right" className="w-72">
+              <SheetHeader className="pt-6 pb-2">
+                <SheetTitle>Menu</SheetTitle>
+              </SheetHeader>
+              <nav className="mt-2 grid gap-2 px-4">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Navigation</div>
+                <SheetClose asChild>
+                  <Button asChild variant={pathname.includes("#features") ? "secondary" : "ghost"} className="justify-between">
+                    <Link href="/#features" aria-current={pathname.includes("#features") ? "page" : undefined}>Features</Link>
                   </Button>
+                </SheetClose>
+                <SheetClose asChild>
+                  <Button asChild variant={pathname.startsWith("/pricing") ? "secondary" : "ghost"} className="justify-between">
+                    <Link href="/pricing" aria-current={pathname.startsWith("/pricing") ? "page" : undefined}>Pricing</Link>
+                  </Button>
+                </SheetClose>
+                {isAuthed ? (
+                  <SheetClose asChild>
+                    <Button asChild variant="ghost" size="default" className="justify-between">
+                      <Link href="/generatorv1" className="inline-flex items-center gap-2">
+                        <span>Generate</span>
+                        <Sparkles className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </SheetClose>
                 ) : null}
                 <div className="h-px bg-border my-2" />
-                <ThemeSwitcher />
-                <div className="h-px bg-border my-2" />
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Account</div>
                 {isAuthed ? (
                   <>
                     <div className="mb-2">
                       <div className="text-xs font-semibold leading-none uppercase">{displayName ?? "Account"}</div>
                       {email ? <div className="text-xs text-muted-foreground">{email}</div> : null}
                     </div>
+                    <SheetClose asChild>
                     <Button
                       variant="outline"
                       className="justify-between"
@@ -192,6 +199,8 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                       <span>Billing</span>
                       <CreditCard className="h-4 w-4" />
                     </Button>
+                    </SheetClose>
+                    <SheetClose asChild>
                     <Button
                       className="justify-between"
                       onClick={async () => {
@@ -201,11 +210,15 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                       <span>Log out</span>
                       <LogOut className="h-4 w-4 " />
                     </Button>
+                    </SheetClose>
                   </>
                 ) : (
                   <AuthMenuClient mobile />
                 )}
               </nav>
+              <SheetFooter>
+                <ThemeSwitcher />
+              </SheetFooter>
             </SheetContent>
           </Sheet>
         </div>
