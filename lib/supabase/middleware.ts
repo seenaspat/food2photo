@@ -60,6 +60,7 @@ export async function updateSession(request: NextRequest) {
     pathname === "/privacy" ||
     pathname === "/contact" ||
     pathname === "/features" ||
+    pathname === "/generatorv1" ||
     pathname.startsWith("/api/");
 
   if (
