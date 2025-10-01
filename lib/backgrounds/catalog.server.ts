@@ -9,7 +9,7 @@ function toAbsolutePath(projectRelativeOrAbsolute: string): string {
 }
 
 export async function loadCatalog(): Promise<BackgroundCatalog> {
-	const manifestPath = toAbsolutePath('public/backgrounds/manifest.json');
+	const manifestPath = toAbsolutePath('lib/backgrounds/data/manifest.json');
 	const raw = await readFile(manifestPath, 'utf8');
 	const json = JSON.parse(raw) as BackgroundCatalog;
 	return json;
