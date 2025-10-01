@@ -19,7 +19,7 @@ export function FeatureAcrossDevices() {
           From Kitchen Counter to Pro Shot, Instantly.
           </h2>
           <p className="mt-4 text-pretty text-base text-muted-foreground sm:text-lg">
-          Why wait? Snap a photo of your dish the moment it's perfect and turn it into a stunning, styled shot right from your phone. Food2Photo is your on-the-spot art director, ensuring you never miss a chance to create mouth-watering content.
+          Why wait? Snap a photo of your dish the moment it&apos;s perfect and turn it into a stunning, styled shot right from your phone. Food2Photo is your on-the-spot art director, ensuring you never miss a chance to create mouth-watering content.
           </p>
           <div className="mt-8">
             <Link href="/generatorv1">

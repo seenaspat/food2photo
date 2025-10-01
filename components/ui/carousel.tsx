@@ -10,7 +10,7 @@ interface CarouselOptions {
 }
 
 interface CarouselContextValue {
-	containerRef: React.RefObject<HTMLDivElement>;
+	containerRef: React.RefObject<HTMLDivElement | null>;
 	scrollBy: (direction: 1 | -1) => void;
 	scrollToIndex: (index: number) => void;
 	canScrollPrev: boolean;
@@ -33,7 +33,7 @@ interface CarouselProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function Carousel({ className, children, opts }: CarouselProps) {
-	const containerRef = useRef<HTMLDivElement>(null);
+	const containerRef = useRef<HTMLDivElement | null>(null);
 	const [canScrollPrev, setCanScrollPrev] = useState(false);
 	const [canScrollNext, setCanScrollNext] = useState(false);
 	const [currentIndex, setCurrentIndex] = useState(0);

@@ -10,7 +10,6 @@ interface FeatureSplitProps {
   ctaHref: string;
   ctaText: string;
   desktopImageSrc: string;
-  phoneImageSrc: string;
   reverse?: boolean;
 }
 
@@ -20,7 +19,6 @@ export function FeatureSplit({
   ctaHref,
   ctaText,
   desktopImageSrc,
-  phoneImageSrc,
   reverse = false,
 }: FeatureSplitProps) {
   return (

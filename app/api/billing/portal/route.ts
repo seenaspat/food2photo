@@ -39,7 +39,7 @@ export async function GET() {
       if (portalConfigId) params.configuration = portalConfigId;
       const session = await stripe.billingPortal.sessions.create(params);
       return NextResponse.json({ url: session.url }, { status: 200 });
-    } catch (err) {
+    } catch {
       const isLive = stripeSecret.startsWith("sk_live");
       const setupUrl = isLive
         ? "https://dashboard.stripe.com/settings/billing/portal"

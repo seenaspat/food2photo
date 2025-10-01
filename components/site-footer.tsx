@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Github, Instagram, Mail, Twitter } from "lucide-react";
+import { Instagram, Twitter } from "lucide-react";
 
 export function SiteFooter() {
   return (
