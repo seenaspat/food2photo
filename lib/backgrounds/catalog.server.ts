@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
 import { BackgroundCatalog, BgRef, ResolvedBackground, isImageBIntegration, isTemplateVarsIntegration, BackgroundFamily, BackgroundItem } from './types';
+import { backgroundCatalog } from './data/manifest';
 
 function toAbsolutePath(projectRelativeOrAbsolute: string): string {
 	return path.isAbsolute(projectRelativeOrAbsolute)
@@ -9,10 +9,7 @@ function toAbsolutePath(projectRelativeOrAbsolute: string): string {
 }
 
 export async function loadCatalog(): Promise<BackgroundCatalog> {
-	const manifestPath = toAbsolutePath('public/backgrounds/manifest.json');
-	const raw = await readFile(manifestPath, 'utf8');
-	const json = JSON.parse(raw) as BackgroundCatalog;
-	return json;
+	return backgroundCatalog;
 }
 
 export function resolveByRef(catalog: BackgroundCatalog, bgRef: BgRef): { family: BackgroundFamily; item: BackgroundItem } {
