@@ -18,7 +18,7 @@ import {
     useEffect,
 } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { UploadCloud, File as FileIcon } from "lucide-react";
+import { Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type FileStatus = "idle" | "dragging" | "uploading" | "error";
@@ -337,9 +337,15 @@ export default function FileUpload({
     const [progress, setProgress] = useState(0);
     const [error, setError] = useState<FileError | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
     const uploadIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [isTouch, setIsTouch] = useState<boolean>(false);
 
     useEffect(() => {
+        try {
+            const m = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+            setIsTouch(m || 'ontouchstart' in window || navigator.maxTouchPoints > 0);
+        } catch { setIsTouch(false); }
         return () => {
             if (uploadIntervalRef.current) {
                 clearInterval(uploadIntervalRef.current);
@@ -518,6 +524,11 @@ export default function FileUpload({
         fileInputRef.current?.click();
     }, [status]);
 
+    const triggerCameraInput = useCallback(() => {
+        if (status === "uploading") return;
+        cameraInputRef.current?.click();
+    }, [status]);
+
     const resetState = useCallback(() => {
         setFile(null);
         setStatus("idle");
@@ -576,28 +587,40 @@ export default function FileUpload({
                                         exit={{ opacity: 0, y: -10 }}
                                         transition={{ duration: 0.2 }}
                                         className="absolute inset-0 flex flex-col items-center justify-center p-6"
-                                        onDragOver={handleDragOver}
-                                        onDragLeave={handleDragLeave}
-                                        onDrop={handleDrop}
+                                        onDragOver={isTouch ? undefined as unknown as (e: DragEvent<HTMLDivElement>) => void : handleDragOver}
+                                        onDragLeave={isTouch ? undefined as unknown as (e: DragEvent<HTMLDivElement>) => void : handleDragLeave}
+                                        onDrop={isTouch ? undefined as unknown as (e: DragEvent<HTMLDivElement>) => void : handleDrop}
                                     >
-                                        <div className="mb-4">
+                                        <div className="mb-4 hidden sm:block">
                                             <UploadIllustration />
                                         </div>
 
                                         <div className="text-center space-y-1.5 mb-4">
-                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
+                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white tracking-tight sm:hidden">
+                                                Take a photo or choose from library
+                                            </h3>
+                                            <h3 className="hidden sm:block text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
                                                 Drag and drop or
                                             </h3>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={triggerFileInput}
-                                            className="w-4/5 flex items-center justify-center gap-2 rounded-lg bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-sm font-semibold text-gray-900 dark:text-white transition-all duration-200 hover:bg-gray-200 dark:hover:bg-white/20 group"
-                                        >
-                                            <span>Upload File</span>
-                                            <UploadCloud className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
-                                        </button>
+                                        <div className="w-full max-w-xs grid gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={triggerCameraInput}
+                                                className="w-full flex items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2.5 text-sm font-semibold transition-all duration-200 hover:bg-primary/90 sm:hidden"
+                                            >
+                                                <span>Take photo</span>
+                                                <Camera className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={triggerFileInput}
+                                                className="w-full flex items-center justify-center gap-2 rounded-lg bg-gray-100 dark:bg-white/10 px-4 py-2.5 text-sm font-semibold text-gray-900 dark:text-white transition-all duration-200 hover:bg-gray-200 dark:hover:bg-white/20"
+                                            >
+                                                <span>Choose from library</span>
+                                            </button>
+                                        </div>
 
                                         <p className="text-xs text-gray-500 dark:text-gray-400 pt-2">
                                                 {acceptedFileTypes?.length
@@ -626,6 +649,15 @@ export default function FileUpload({
                                                 ","
                                             )}
                                             aria-label="File input"
+                                        />
+                                        <input
+                                            ref={cameraInputRef}
+                                            type="file"
+                                            className="sr-only"
+                                            onChange={handleFileInputChange}
+                                            accept={acceptedFileTypes?.length ? acceptedFileTypes.join(",") : "image/*"}
+                                            capture="environment"
+                                            aria-label="Camera input"
                                         />
                                     </motion.div>
                                 ) : status === "uploading" ? (

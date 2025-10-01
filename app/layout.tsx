@@ -32,7 +32,7 @@ export default async function RootLayout({
   const { data } = await supabase.auth.getUser();
   const initialIsAuthed = Boolean(data.user?.id);
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <body className={`${geistSans.className} antialiased`}>
         <ThemeProvider
           attribute="class"
