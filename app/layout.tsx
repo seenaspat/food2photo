@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import SiteNavbar from "@/components/site-navbar";
+import { createClient } from "@/lib/supabase/server";
 import SiteFooter from "@/components/site-footer";
 import CookieBanner from "@/components/cookie-banner";
 
@@ -22,13 +23,16 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  const initialIsAuthed = Boolean(data.user?.id);
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <body className={`${geistSans.className} antialiased`}>
         <ThemeProvider
           attribute="class"
@@ -36,7 +40,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <SiteNavbar />
+          <SiteNavbar initialIsAuthed={initialIsAuthed} />
           {children}
           <SiteFooter />
           <CookieBanner />

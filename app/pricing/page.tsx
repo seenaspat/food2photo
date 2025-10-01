@@ -92,21 +92,31 @@ export default function PricingPage() {
     (async () => {
       try {
         // auth gate
+        let authed = false;
         try {
           const supabase = createClient();
           const { data } = await supabase.auth.getUser();
-          setIsAuthed(Boolean(data.user?.id));
+          authed = Boolean(data.user?.id);
+          setIsAuthed(authed);
         } catch {}
 
-        const res = await fetch("/api/billing/balance", { method: "GET" });
-        const json = await res.json();
-        const status = json?.subscription?.status as string | undefined;
-        const renew = json?.subscription?.renew_at as string | undefined;
-        const willCancel = Boolean(json?.subscription?.cancel_at_period_end);
-        const isActive = status === "trialing" || status === "active" || status === "past_due";
-        setSubscribed(Boolean(isActive));
-        setRenewAt(renew ?? null);
-        setCancelAtPeriodEnd(willCancel);
+        if (authed) {
+          const res = await fetch("/api/billing/balance", { method: "GET" });
+          if (res.ok) {
+            const json = await res.json();
+            const status = json?.subscription?.status as string | undefined;
+            const renew = json?.subscription?.renew_at as string | undefined;
+            const willCancel = Boolean(json?.subscription?.cancel_at_period_end);
+            const isActive = status === "trialing" || status === "active" || status === "past_due";
+            setSubscribed(Boolean(isActive));
+            setRenewAt(renew ?? null);
+            setCancelAtPeriodEnd(willCancel);
+          }
+        } else {
+          setSubscribed(false);
+          setRenewAt(null);
+          setCancelAtPeriodEnd(false);
+        }
       } catch {} finally { setLoadingBilling(false); }
       try {
         const r = await fetch("/api/billing/prices", { method: "GET", cache: "no-store" });

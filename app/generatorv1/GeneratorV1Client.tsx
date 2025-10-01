@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import FileUpload from "@/components/kokonutui/file-upload";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { LoginForm } from "@/components/login-form";
@@ -30,6 +30,23 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
     return () => clearTimeout(handle);
   }, [value, delayMs]);
   return debouncedValue;
+}
+
+// Responsive helper: detect mobile viewport (<640px)
+function useIsMobile(breakpointPx: number = 640): boolean {
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  useEffect(() => {
+    try {
+      const update = () => setIsMobile(window.innerWidth < breakpointPx);
+      update();
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    } catch {
+      setIsMobile(false);
+      return () => {};
+    }
+  }, [breakpointPx]);
+  return isMobile;
 }
 
 interface BackgroundOption {
@@ -139,6 +156,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	}, []);
 
 	// Search queries for filtering backgrounds
+  const isMobile = useIsMobile();
 	const [ambienceQuery, setAmbienceQuery] = useState<string>("");
 	const [topdownQuery, setTopdownQuery] = useState<string>("");
 
@@ -187,8 +205,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	}, [backgroundOptions, ambienceQueryDebounced]);
 
 	// Split filtered ambience into pages
-	const backgroundPages = useMemo(() => {
-		const pageSize = 6;
+  const backgroundPages = useMemo(() => {
+    const pageSize = isMobile ? 4 : 6;
 		const pages: (BackgroundOption | null)[][] = [];
 		const optionsCount = filteredBackgroundOptions.length;
 		const pageCount = Math.ceil(optionsCount / pageSize);
@@ -200,8 +218,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 			pages.push(page);
 		}
 		if (pages.length === 0) pages.push(Array(9).fill(null));
-		return pages;
-	}, [filteredBackgroundOptions]);
+    return pages;
+  }, [filteredBackgroundOptions, isMobile]);
 
 	const filteredTopdownItems = useMemo(() => {
 		const q = topdownQueryDebounced.trim().toLowerCase();
@@ -209,8 +227,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 		return topdownItems.filter((it) => it.label.toLowerCase().includes(q));
 	}, [topdownItems, topdownQueryDebounced]);
 
-	const topdownPages = useMemo(() => {
-		const pageSize = 6;
+  const topdownPages = useMemo(() => {
+    const pageSize = isMobile ? 4 : 6;
 		const pages: ({ id: string; label: string; thumbUrl: string } | null)[][] = [];
 		const optionsCount = filteredTopdownItems.length;
 		const pageCount = Math.ceil(optionsCount / pageSize);
@@ -222,8 +240,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 			pages.push(page);
 		}
 		if (pages.length === 0) pages.push(Array(9).fill(null));
-		return pages;
-	}, [filteredTopdownItems]);
+    return pages;
+  }, [filteredTopdownItems, isMobile]);
 
 	function slugify(source: string): string {
 		return source
@@ -403,11 +421,11 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 													<CarouselContent>
 														{backgroundPages.map((page, pageIndex) => (
 															<CarouselItem key={pageIndex} className="basis-full">
-																<div className="p-1 grid grid-cols-3 gap-3">
+                                                            <div className="p-1 grid grid-cols-2 sm:grid-cols-3 gap-3">
 																	{page.map((bg, itemIndex) =>
 																		bg ? (
 																			<button key={bg.id} onClick={() => { setSelectedBackground(bg.id); setSelectedTopdownRef(null); }} className="text-left">
-																			<Card className={selectedBackground === bg.id ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
+                                                                            <Card className={(selectedBackground === bg.id ? "border-primary ring-1 ring-primary " : "") + "overflow-hidden h-full"}>
 																				<CardContent className="p-0">
 																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
 																						{bg.id === "none" ? (
@@ -416,7 +434,11 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																							<img src={bg.thumb} alt={bg.label} className="h-full w-full object-cover" />
 																						)}
 																					</div>
-																					<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{bg.label}</div>
+                                                        <div className="p-2 text-sm leading-5 overflow-hidden">
+                                                            <div className="h-10 line-clamp-2 break-words" title={bg.label} aria-label={bg.label}>
+                                                                {bg.label}
+                                                            </div>
+                                                        </div>
 																				</CardContent>
 																			</Card>
 																		</button>
@@ -446,16 +468,20 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 													<CarouselContent>
 														{topdownPages.map((page, pageIndex) => (
 															<CarouselItem key={pageIndex} className="basis-full">
-																<div className="p-1 grid grid-cols-3 gap-3">
+                                                        <div className="p-1 grid grid-cols-2 sm:grid-cols-3 gap-3 items-stretch content-stretch">
 																	{page.map((it, itemIndex) =>
 																		it ? (
 																			<button key={it.id} onClick={() => { const ref = `v4-topdown:${it.id}`; setSelectedTopdownRef(ref); setSelectedBackground('none'); }} className="text-left">
-																			<Card className={selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary overflow-hidden" : "overflow-hidden"}>
+                                                                            <Card className={(selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary " : "") + "overflow-hidden h-full"}>
 																				<CardContent className="p-0">
 																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
 																						<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
 																					</div>
-																					<div className="p-2 text-sm leading-5 h-14 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
+                                                        <div className="p-2 text-sm leading-5 overflow-hidden">
+                                                            <div className="h-10 line-clamp-2 break-words" title={it.label} aria-label={it.label}>
+                                                                {it.label}
+                                                            </div>
+                                                        </div>
 																				</CardContent>
 																			</Card>
 																		</button>
@@ -525,22 +551,43 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 										</TabsList>
 									</Tabs>
 								</div>
-								<div className="space-y-2">
-									<div className="text-sm font-medium">Aspect Ratio</div>
-									<Tabs value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatioId)} className="w-full">
-										<TabsList className="grid w-full grid-cols-3 sm:grid-cols-5">
-											{aspectRatioOptions.map((opt) => {
-												const Icon = opt.icon;
-												return (
-													<TabsTrigger key={opt.id} value={opt.id} className="flex items-center gap-2">
-														<Icon className="h-4 w-4" />
-														{opt.label}
-													</TabsTrigger>
-												);
-											})}
-										</TabsList>
-									</Tabs>
-								</div>
+                                <div className="space-y-2">
+                                    <div className="text-sm font-medium">Aspect Ratio</div>
+                                    {isMobile ? (
+                                        <Select value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatioId)}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select aspect ratio" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {aspectRatioOptions.map((opt) => {
+                                                    const Icon = opt.icon;
+                                                    return (
+                                                        <SelectItem key={opt.id} value={opt.id}>
+                                                            <div className="flex items-center gap-2">
+                                                                <Icon className="h-4 w-4" />
+                                                                {opt.label}
+                                                            </div>
+                                                        </SelectItem>
+                                                    );
+                                                })}
+                                            </SelectContent>
+                                        </Select>
+                                    ) : (
+                                        <Tabs value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatioId)} className="w-full">
+                                            <TabsList className="grid w-full grid-cols-5">
+                                                {aspectRatioOptions.map((opt) => {
+                                                    const Icon = opt.icon;
+                                                    return (
+                                                        <TabsTrigger key={opt.id} value={opt.id} className="flex items-center gap-2">
+                                                            <Icon className="h-4 w-4" />
+                                                            {opt.label}
+                                                        </TabsTrigger>
+                                                    );
+                                                })}
+                                            </TabsList>
+                                        </Tabs>
+                                    )}
+                                </div>
 							</div>
 						</CardContent>
 					</Card>
