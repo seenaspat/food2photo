@@ -2,7 +2,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/
 
 export default function PrivacyPage() {
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-16 prose prose-lg dark:prose-invert">
+    <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:py-12 md:py-16 prose-sm sm:prose-base md:prose-lg dark:prose-invert">
       <h1>Privacy Policy</h1>
       <p><strong>Last updated:</strong> 2025-09-24</p>
 

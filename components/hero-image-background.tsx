@@ -37,11 +37,19 @@ export function HeroImageBackground({
       <div className={clsx("absolute inset-0 -z-10 overflow-hidden", hideBackgroundBelowLg && "hidden lg:block") }>
         {mobileSrc ? (
           <>
-            <Image src={mobileSrc} alt={alt} fill priority style={{ objectPosition: mobileObjectPosition ?? objectPosition }} className="object-contain w-full h-full block lg:hidden" />
-            <Image src={src} alt={alt} fill priority style={{ objectPosition }} className="object-cover hidden lg:block" />
+            <Image src={mobileSrc} alt={alt} fill priority sizes="100vw" style={{ objectPosition: mobileObjectPosition ?? objectPosition }} className="object-contain w-full h-full block lg:hidden" />
+            <Image src={src} alt={alt} fill priority sizes="(min-width: 1024px) 100vw, 0px" style={{ objectPosition }} className="object-cover hidden lg:block" />
           </>
         ) : (
-          <Image src={src} alt={alt} fill priority style={{ objectPosition }} className="object-cover" />
+          <Image
+            src={src}
+            alt={alt}
+            fill
+            priority
+            sizes="(min-width: 1024px) 100vw, 0px"
+            style={{ objectPosition }}
+            className="object-cover"
+          />
         )}
         {overlayAlpha > 0 ? (
           <div
@@ -62,6 +70,7 @@ export function HeroImageBackground({
             alt={overlayImageAlt}
             fill
             priority
+            sizes="(min-width: 1024px) 50vw, 100vw"
             className={clsx("object-contain object-right", overlayImageClassName)}
           />
         </div>
