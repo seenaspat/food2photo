@@ -17,16 +17,14 @@ export default function Home() {
             ctaHref="/generatorv1"
             ctaText="Find Your Style"
             desktopImageSrc="/feature2-main.webp"
-            phoneImageSrc="/backgrounds/v3-003/bg-v3-chiringuito-seafood-role-you-are-a-restaurant-ambience-stylist-for-2025-09-07T20-50-24-733Z-szr0bo.png"
             reverse
           />
           <FeatureSplit
             title="The Final Touch is Yours."
-            description="Use simple text prompts to add the final, creative touch. Add a side of fries, swap the plate, or see what a sprinkle of chili flakes looks like. It’s your tool to refine a great shot until it’s absolutely perfect."
+            description="Use simple text prompts to add the final, creative touch. Add a side of fries, swap the plate, or see what a sprinkle of chili flakes looks like. It's your tool to refine a great shot until it's absolutely perfect."
             ctaHref="/generatorv1"
             ctaText="Add Your Touch"
             desktopImageSrc="/feature3-main.webp"
-            phoneImageSrc="/backgrounds/v4-003/bg-v4-overhead-slate-minimal-sushi-role-you-are-a-topdown-food-photography-stylist-2025-09-08T10-13-06-842Z-u5iyra.png"
           />
           <FAQ />
         </section>
