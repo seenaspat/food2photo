@@ -33,16 +33,16 @@ export function resolveBackground(catalog: BackgroundCatalog, bgRef: BgRef): Res
 		const templateAbsPath = toAbsolutePath(family.integration.templatePath);
 		const varsAbsPath = toAbsolutePath(path.join(family.integration.varsDir, item.payload.varsFile));
 		return {
-			family: family as any,
-			item: item as any,
+			family: family as BackgroundFamily & { integration: typeof family.integration },
+			item: item as BackgroundItem & { payload: typeof item.payload },
 			templateAbsPath,
 			varsAbsPath,
 		};
 	}
 	if (isImageBIntegration(family.integration) && item.payload.type === 'image_b') {
 		return {
-			family: family as any,
-			item: item as any,
+			family: family as BackgroundFamily & { integration: typeof family.integration },
+			item: item as BackgroundItem & { payload: typeof item.payload },
 			imagePublicPath: item.payload.imagePath,
 		};
 	}

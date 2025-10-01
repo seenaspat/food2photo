@@ -36,7 +36,7 @@ export async function buildCompositionPrompt(input: BuildPromptInput): Promise<s
 	const styleProfile = input.resolved ? input.resolved.family.styleProfile : undefined;
 	const templateFile = styleProfile === 'topdown' ? 'compose-topdown-v1.md' : 'compose-v1.md';
 	const genPath = path.join(process.cwd(), 'templates', 'generation', templateFile);
-	let genTemplate = await readTextFileSafe(genPath);
+	const genTemplate = await readTextFileSafe(genPath);
 	let envSpecBlock = '';
 	if (input.resolved) {
 		envSpecBlock = await buildEnvSpec(input.resolved);
