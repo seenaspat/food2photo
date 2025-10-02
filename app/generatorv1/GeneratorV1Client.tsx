@@ -93,6 +93,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
 	const [showPreview, setShowPreview] = useState<boolean>(false);
 	const [creditBalance, setCreditBalance] = useState<number | null>(null);
+	const [userPlan, setUserPlan] = useState<{ code: string; name: string } | null>(null);
 	const [downloadFormat, setDownloadFormat] = useState<"png" | "jpeg" | "webp">("png");
 
 	// Persist/restore non-file UI state across auth redirects
@@ -148,12 +149,13 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 			if (!resp.ok) return;
 			const json = await resp.json();
 			setCreditBalance(typeof json.balance === "number" ? json.balance : Number(json.balance ?? 0));
+			setUserPlan(json.plan || null);
 		} catch {}
 	}, []);
 
 	useEffect(() => {
 		void refreshBalance();
-	}, []);
+	}, [refreshBalance]);
 
 	// Search queries for filtering backgrounds
   const isMobile = useIsMobile();
@@ -592,7 +594,32 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 						</CardContent>
 					</Card>
 
-                  <Button className="w-full" size="lg" disabled={!canEnhance || isGenerating} onClick={async () => {
+                  {creditBalance !== null && creditBalance <= 0 ? (
+                    <Card className="border-primary/50">
+                      <CardContent className="pt-6 space-y-3">
+                        <div className="text-center space-y-2">
+                          <p className="text-sm font-medium">You&apos;re out of credits</p>
+                          <p className="text-xs text-muted-foreground">
+                            {userPlan?.code === "pro" 
+                              ? "Top up your credits to keep creating stunning food photos"
+                              : userPlan?.code === "basic"
+                              ? "Upgrade to Pro for 100 credits/month + priority queue"
+                              : "Get more credits to continue enhancing your food photos"
+                            }
+                          </p>
+                        </div>
+                        <Button className="w-full" size="lg" onClick={() => { persistUiState(); window.location.href = "/pricing?need_credits=1"; }}>
+                          {userPlan?.code === "pro" 
+                            ? "Buy Credit Top-Up" 
+                            : userPlan?.code === "basic"
+                            ? "Upgrade to Pro"
+                            : "View Plans & Pricing"
+                          }
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Button className="w-full" size="lg" disabled={!canEnhance || isGenerating} onClick={async () => {
                     if (!uploaded) return;
                     try {
                       // Only flip state after auth succeeds
@@ -632,6 +659,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
                           return;
                         }
 						if (resp.status === 402) {
+							persistUiState();
 							window.location.href = "/pricing?need_credits=1";
 							return;
 						}
@@ -654,6 +682,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 					}}>
 						{isGenerating ? "Enhancing..." : "Enhance Photo"}
 					</Button>
+                  )}
 
                   <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
                     <DialogContent className="max-h-[85vh] overflow-y-auto p-0">
@@ -662,6 +691,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
                         className="max-w-none"
                         onSuccess={() => {
                           setShowAuthModal(false);
+                          void refreshBalance();
                         }}
                       />
                     </DialogContent>
@@ -702,8 +732,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 										/>
 									</div>
 									<div className="mt-2 text-xs text-muted-foreground">{creditBalance !== null ? `Credits: ${creditBalance}` : null}</div>
-									<div className="mt-4 flex items-center justify-between gap-2">
-										<Button variant="secondary" disabled={isRegenerating || variantHint.trim().length === 0}
+									<div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+										<Button variant="secondary" disabled={isRegenerating || variantHint.trim().length === 0} className="w-full sm:w-auto"
 											onClick={async () => {
 												if (!generatedImageUrl) return;
 												try {
@@ -746,9 +776,9 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 											}}>
 											{isRegenerating ? "Regenerating..." : "Regenerate"}
 										</Button>
-										<div className="flex items-center gap-2">
+										<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
 											<Select value={downloadFormat} onValueChange={(v) => setDownloadFormat(v as "png" | "jpeg" | "webp")}>
-												<SelectTrigger className="w-[130px]">
+												<SelectTrigger className="w-full sm:w-[130px]">
 													<SelectValue placeholder="Format" />
 												</SelectTrigger>
 												<SelectContent>
@@ -757,7 +787,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 													<SelectItem value="webp">WebP</SelectItem>
 												</SelectContent>
 											</Select>
-											<Button className="gap-2" onClick={handleDownload} disabled={!generatedImageUrl}>
+											<Button className="gap-2 w-full sm:w-auto" onClick={handleDownload} disabled={!generatedImageUrl}>
 												<Download className="h-4 w-4" /> Download {downloadFormat.toUpperCase()}
 											</Button>
 										</div>
