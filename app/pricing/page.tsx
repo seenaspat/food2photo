@@ -119,7 +119,8 @@ export default function PricingPage() {
         }
       } catch {} finally { setLoadingBilling(false); }
       try {
-        const r = await fetch("/api/billing/prices", { method: "GET", cache: "no-store" });
+        const search = typeof window !== 'undefined' ? window.location.search : '';
+        const r = await fetch(`/api/billing/prices${search}`, { method: "GET" });
         const j = await r.json();
         setPrices(j ?? {});
       } catch {} finally { setLoadingPrices(false); }
@@ -331,9 +332,10 @@ export default function PricingPage() {
             </Card>
           ))}
         </div>
-        <div className="mt-10 w-full max-w-4xl text-left">
-          <h2 className="text-lg font-medium mb-3">Buy credits</h2>
-          <p className="text-sm text-muted-foreground mb-4">1 credit = 1 image generation. Perfect for occasional top‑ups.</p>
+        {subscribed && (
+          <div className="mt-10 w-full max-w-4xl text-left">
+            <h2 className="text-lg font-medium mb-3">Top up your credits</h2>
+            <p className="text-sm text-muted-foreground mb-4">Need more credits this month? Top up anytime.</p>
           <div className="grid gap-4 sm:grid-cols-2">
             {[
               { key: "credits_10", label: "10 Credits", tokens: 10, price: prices.credits?.c10 },
@@ -366,6 +368,7 @@ export default function PricingPage() {
             ))}
           </div>
         </div>
+        )}
         <div className="mt-2 text-sm text-muted-foreground min-h-5">
           {loadingBilling ? (
             <div className="inline-block h-4 w-64 rounded bg-muted animate-pulse" aria-busy="true" />

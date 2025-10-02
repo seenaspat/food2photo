@@ -11,12 +11,12 @@ export function SiteFooter() {
           <p className="text-muted-foreground text-sm">AI-enhanced food photography from your real dishes.</p>
           <div className="flex items-center gap-3 mt-1">
             <Button asChild variant="ghost" size="icon" aria-label="Twitter">
-              <Link href="https://x.com/" target="_blank" rel="noreferrer">
+              <Link href="https://x.com/food2photo" target="_blank" rel="noreferrer">
                 <Twitter className="size-4" />
               </Link>
             </Button>
             <Button asChild variant="ghost" size="icon" aria-label="Instagram">
-              <Link href="https://instagram.com/" target="_blank" rel="noreferrer">
+              <Link href="https://instagram.com/food2photoapp" target="_blank" rel="noreferrer">
                 <Instagram className="size-4" />
               </Link>
             </Button>

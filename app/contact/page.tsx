@@ -10,10 +10,10 @@ export default function ContactPage() {
           Email: <a className="underline" href="mailto:support@food2photo.com">support@food2photo.com</a>
         </p>
         <p>
-          Twitter: <a className="underline" href="https://x.com/" target="_blank" rel="noreferrer">@food2photo</a>
+          Twitter: <a className="underline" href="https://x.com/food2photo" target="_blank" rel="noreferrer">@food2photo</a>
         </p>
         <p>
-          Instagram: <a className="underline" href="https://instagram.com/" target="_blank" rel="noreferrer">@food2photo</a>
+          Instagram: <a className="underline" href="https://instagram.com/food2photoapp" target="_blank" rel="noreferrer">@food2photo</a>
         </p>
       </div>
     </div>

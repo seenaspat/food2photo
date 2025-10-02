@@ -3,7 +3,38 @@ import Stripe from "stripe";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+type SupportedCurrency = "USD" | "EUR" | "SEK";
+
+function normalizeCurrency(input: string | null | undefined): SupportedCurrency | null {
+  const c = (input ?? "").toUpperCase();
+  if (c === "USD" || c === "EUR" || c === "SEK") return c;
+  return null;
+}
+
+function detectCurrencyFromRequest(request: Request): SupportedCurrency {
+  const url = new URL(request.url);
+  const forced = normalizeCurrency(url.searchParams.get("currency"));
+  if (forced) return forced;
+
+  const headers = request.headers;
+  const country = (headers.get("x-vercel-ip-country") ?? "").toUpperCase();
+  if (country === "SE") return "SEK";
+  const EUR_COUNTRIES = new Set([
+    "AT","BE","CY","EE","FI","FR","DE","GR","IE","IT","LV","LT","LU","MT","NL","PT","SK","SI","ES"
+  ]);
+  if (EUR_COUNTRIES.has(country)) return "EUR";
+
+  const acceptLanguage = headers.get("accept-language") ?? "";
+  // Try to infer from locale region, e.g., sv-SE, de-DE, fr-FR
+  const regionMatch = /-([A-Z]{2})/.exec(acceptLanguage.toUpperCase());
+  const region = regionMatch?.[1] ?? "";
+  if (region === "SE") return "SEK";
+  if (EUR_COUNTRIES.has(region)) return "EUR";
+
+  return "USD";
+}
+
+export async function GET(request: Request) {
 	try {
 		if (process.env.BILLING_ENABLED !== "true") {
 			return NextResponse.json({ error: "Billing disabled" }, { status: 400 });
@@ -12,21 +43,44 @@ export async function GET() {
 		if (!stripeSecret) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
 		const stripe = new Stripe(stripeSecret, { apiVersion: "2024-06-20" });
 
-		async function getByLookupKey(lookupKey: string) {
-			const res = await stripe.prices.search({ query: `lookup_key:'${lookupKey}' AND active:'true'`, limit: 1 });
-			const p = res.data?.[0];
-			return p ? { unit_amount: p.unit_amount ?? null, currency: p.currency } : { unit_amount: null, currency: null };
+		const wantedCurrency = detectCurrencyFromRequest(request);
+
+		// Base Stripe Price lookup_keys. We rely on presentment prices (currency_options)
+		const BASE_KEYS = {
+			pro_monthly: "pro_monthly",
+			pro_yearly: "pro_yearly",
+			basic_monthly: "basic_monthly",
+			credits_10: "credits_10",
+			credits_50: "credits_50",
+		} as const;
+
+		async function getByLookupKey(lookupKey: string, desiredCurrency: SupportedCurrency) {
+			const search = await stripe.prices.search({
+				query: `lookup_key:'${lookupKey}' AND active:'true'`,
+				limit: 1,
+				expand: ['data.currency_options'],
+			});
+			const p = search.data?.[0] ?? null;
+			if (!p) return { unit_amount: null, currency: null, lookup_key: null };
+			const presentment = p as Stripe.Price & { currency_options?: Record<string, { unit_amount?: number | null }> };
+			const desiredLower = desiredCurrency.toLowerCase();
+			const opt = presentment.currency_options?.[desiredLower];
+			if (opt && typeof opt.unit_amount === 'number') {
+				return { unit_amount: opt.unit_amount ?? null, currency: desiredLower, lookup_key: (p.lookup_key ?? null) as string | null };
+			}
+			return { unit_amount: p.unit_amount ?? null, currency: p.currency, lookup_key: (p.lookup_key ?? null) as string | null };
 		}
 
 		const [proMonthly, proYearly, basicMonthly, credits10, credits50] = await Promise.all([
-			getByLookupKey("pro_monthly"),
-			getByLookupKey("pro_yearly"),
-			getByLookupKey("basic_monthly"),
-			getByLookupKey("credits_10"),
-			getByLookupKey("credits_50"),
+			getByLookupKey(BASE_KEYS.pro_monthly, wantedCurrency),
+			getByLookupKey(BASE_KEYS.pro_yearly, wantedCurrency),
+			getByLookupKey(BASE_KEYS.basic_monthly, wantedCurrency),
+			getByLookupKey(BASE_KEYS.credits_10, wantedCurrency),
+			getByLookupKey(BASE_KEYS.credits_50, wantedCurrency),
 		]);
 
-		return NextResponse.json({
+		const res = NextResponse.json({
+			currency: wantedCurrency,
 			pro: {
 				monthly: proMonthly,
 				yearly: proYearly,
@@ -39,6 +93,11 @@ export async function GET() {
 				c50: credits50,
 			},
 		});
+		// Cache at the edge for 1 hour, allow stale for a day while revalidating
+		res.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+		// Ensure cache key varies by geo/language when not forcing via query param
+		res.headers.set("Vary", "X-Vercel-IP-Country, Accept-Language");
+		return res;
 	} catch (e) {
 		const message = e instanceof Error ? e.message : "Unknown error";
 		return NextResponse.json({ error: message }, { status: 500 });
