@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import FileUpload from "@/components/kokonutui/file-upload";
+import { prepareImageForUpload } from "@/lib/client-image/prepare";
 import {
   Select,
   SelectContent,
@@ -28,7 +29,7 @@ export function GenerateForm() {
   const [lensLook, setLensLook] = useState<SelectedLensLook>("50mm");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const acceptedTypes = ["image/jpeg", "image/png", "image/heic"];
+  const acceptedTypes = ["image/jpeg", "image/png", "image/webp", "image/heic"];
   const maxFileSizeBytes = 15 * 1024 * 1024;
 
   React.useEffect(() => {
@@ -153,17 +154,32 @@ export function GenerateForm() {
               if (!dishFile) return;
               try {
                 setIsSubmitting(true);
+                // Prepare and compress images before upload (WebP-first, <=2MB, 1280px long edge)
+                const preparedDish = await prepareImageForUpload(dishFile);
+                const preparedBg = backgroundFile ? await prepareImageForUpload(backgroundFile) : null;
+                // Removed verbose logs after confirming payload sizes
                 const formData = new FormData();
-                formData.append("dish", dishFile);
-                if (backgroundFile) formData.append("background", backgroundFile);
+                formData.append("dish", preparedDish);
+                if (preparedBg) formData.append("background", preparedBg);
                 formData.append("prompt", prompt);
                 formData.append("lensLook", lensLook);
 
-                const res = await fetch("/api/generate", {
-                  method: "POST",
-                  body: formData,
-                });
+                const res = await fetch("/api/generate", { method: "POST", body: formData });
                 if (!res.ok) {
+                  // Basic client page: show friendly messages
+                  if (res.status === 429) {
+                    alert("Too many requests. Please wait a bit and try again.");
+                    return;
+                  }
+                  if (res.status === 413) {
+                    alert("Photo too large for the gateway. Try a smaller image.");
+                    return;
+                  }
+                  if (res.status >= 500) {
+                    const reqId = res.headers.get("X-Request-Id") || "n/a";
+                    alert(`Service is busy. Please retry in a minute. Request ID: ${reqId}`);
+                    return;
+                  }
                   throw new Error(`Generate failed: ${res.status}`);
                 }
                 const blob = await res.blob();
@@ -177,7 +193,8 @@ export function GenerateForm() {
                 URL.revokeObjectURL(url);
               } catch (e) {
                 console.error(e);
-                alert("Generation failed. Please try again.");
+                const message = e instanceof Error ? e.message : "Generation failed. Please try again.";
+                alert(message);
               } finally {
                 setIsSubmitting(false);
               }
