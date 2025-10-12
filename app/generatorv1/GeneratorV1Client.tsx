@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
+import { prepareImageForUpload } from "@/lib/client-image/prepare";
+import { classifyStatus } from "@/lib/http/classify";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -623,10 +625,13 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
                     if (!uploaded) return;
                     try {
                       // Only flip state after auth succeeds
-							const fd = new FormData();
-							fd.append("dish", uploaded);
-							if (backgroundUpload) {
-								fd.append("background", backgroundUpload);
+                            // Prepare images to keep payload <=2MB and consistent dimensions
+                            const preparedDish = await prepareImageForUpload(uploaded);
+                            const preparedBg = backgroundUpload ? await prepareImageForUpload(backgroundUpload) : null;
+                            const fd = new FormData();
+                            fd.append("dish", preparedDish);
+                            if (preparedBg) {
+                                fd.append("background", preparedBg);
 							} else if (selectedTopdownRef) {
 								fd.append("bgRef", selectedTopdownRef);
 							} else if (selectedBackground && selectedBackground !== "none") {
@@ -651,21 +656,45 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
           setIsGenerating(true);
           setShowPreview(true);
           setGeneratedImageUrl(null);
-					const resp = await fetch(`/api/generate${debugSuffix}`, { method: "POST", body: fd });
+					const makeRequest = async () => fetch(`/api/generate${debugSuffix}`, { method: "POST", body: fd });
+					let resp: Response | null = null;
+					try {
+					  resp = await makeRequest();
+					} catch {
+					  alert("Network error. Please check your connection and try again.");
+					  return;
+					}
 					if (!resp.ok) {
-                        if (resp.status === 401) {
-                          persistUiState();
-                          setShowAuthModal(true);
-                          return;
-                        }
-						if (resp.status === 402) {
-							persistUiState();
-							window.location.href = "/pricing?need_credits=1";
-							return;
-						}
-						let details = "";
-						try { details = await resp.text(); } catch {}
-						throw new Error(`Generation failed: ${resp.status}${details ? ` - ${details}` : ""}`);
+					  const kind = classifyStatus(resp.status);
+					  const reqId = resp.headers.get("X-Request-Id") || "n/a";
+					  if (resp.status === 401) {
+					    persistUiState();
+					    setShowAuthModal(true);
+					    return;
+					  }
+					  if (resp.status === 402) {
+					    persistUiState();
+					    window.location.href = "/pricing?need_credits=1";
+					    return;
+					  }
+					  if (kind === "gateway") {
+					    await new Promise((r) => setTimeout(r, 800));
+					    const retry = await makeRequest();
+					    if (!retry.ok) {
+					      alert(`Service is busy. Please retry in a minute. Request ID: ${reqId}`);
+					      return;
+					    }
+					    resp = retry;
+					  } else if (kind === "too_many_requests") {
+					    alert("Too many requests. Please wait a bit and try again.");
+					    return;
+					  } else if (kind === "payload_too_large") {
+					    alert("Photo too large for the gateway. Try a smaller image.");
+					    return;
+					  } else {
+					    alert(`Server error (${resp.status}). Request ID: ${reqId}`);
+					    return;
+					  }
 					}
 							const blob = await resp.blob();
 							const url = URL.createObjectURL(blob);
@@ -674,8 +703,11 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 								const headerBal = resp.headers.get("X-Credit-Balance");
 								if (headerBal) setCreditBalance(Number(headerBal));
 							} catch {}
-						} catch (e) {
-							console.error(e);
+                    } catch (e) {
+                            console.error(e);
+                            const message = e instanceof Error ? e.message : "Generation failed.";
+                            // Keep silent toast style; this UI uses preview state to show progress
+                            try { alert(message); } catch {}
 						} finally {
 							setIsGenerating(false);
 						}
