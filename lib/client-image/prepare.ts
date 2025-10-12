@@ -144,8 +144,8 @@ export async function prepareImageForUpload(file: File, opts?: Partial<PrepareIm
 
   // Decode to get intrinsic dimensions
   const img = await loadImageFromFile(file);
-  const srcW = img.naturalWidth || (img as any).width || 0;
-  const srcH = img.naturalHeight || (img as any).height || 0;
+  const srcW = img.naturalWidth || img.width || 0;
+  const srcH = img.naturalHeight || img.height || 0;
   if (srcW <= 0 || srcH <= 0) return file;
 
   // Early return if image is already within budget, dimensions at/below target, and in preferred format
