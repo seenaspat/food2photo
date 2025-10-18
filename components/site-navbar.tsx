@@ -119,6 +119,11 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                   {email ? <span className="text-xs text-muted-foreground normal-case font-normal">{email}</span> : null}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/account" className="justify-between flex items-center">
+                    <span>Account</span>
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem className="justify-between" onClick={async () => {
                   try {
                     const res = await fetch("/api/billing/portal", { method: "GET" });
@@ -157,7 +162,7 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
               <nav className="mt-2 grid gap-2 px-4">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Navigation</div>
                 <SheetClose asChild>
-                  <Button asChild variant={pathname.includes("#features") ? "secondary" : "ghost"} className="justify-between">
+                    <Button asChild variant={pathname.includes("#features") ? "secondary" : "ghost"} className="justify-between">
                     <Link href="/#features" aria-current={pathname.includes("#features") ? "page" : undefined}>Features</Link>
                   </Button>
                 </SheetClose>
@@ -198,6 +203,11 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                     >
                       <span>Billing</span>
                       <CreditCard className="h-4 w-4" />
+                    </Button>
+                    </SheetClose>
+                    <SheetClose asChild>
+                    <Button asChild variant="ghost" className="justify-between">
+                      <Link href="/account">Account</Link>
                     </Button>
                     </SheetClose>
                     <SheetClose asChild>

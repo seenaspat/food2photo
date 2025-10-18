@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ArrowRight, BadgeCheck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -130,14 +130,21 @@ export default function PricingPage() {
   const createCheckout = useCallback(async () => {
     try {
       const body = { planCode: proPlanPriceId };
-      const res = await fetch("/api/billing/create-checkout-session", {
+      const res = await fetch("/api/billing/start-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Checkout failed");
-      if (json?.url) window.location.href = json.url as string;
+      const t = json?.type as string | undefined;
+      const url = json?.url as string | undefined;
+      if (!url) throw new Error("No URL returned");
+      if (t === "portal") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        window.location.href = url;
+      }
     } catch (e) {
       console.error(e);
       alert("Could not start checkout. Please try again.");
@@ -147,14 +154,21 @@ export default function PricingPage() {
   const createBasicCheckout = useCallback(async () => {
     try {
       const body = { planCode: "basic_monthly" };
-      const res = await fetch("/api/billing/create-checkout-session", {
+      const res = await fetch("/api/billing/start-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Checkout failed");
-      if (json?.url) window.location.href = json.url as string;
+      const t = json?.type as string | undefined;
+      const url = json?.url as string | undefined;
+      if (!url) throw new Error("No URL returned");
+      if (t === "portal") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        window.location.href = url;
+      }
     } catch (e) {
       console.error(e);
       alert("Could not start checkout. Please try again.");
@@ -188,6 +202,30 @@ export default function PricingPage() {
       alert("Could not open billing portal. Please try again.");
     }
   }, []);
+
+  // Auto-continue after login via ?autoPlan=basic|pro
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthed || subscribed || autoStartedRef.current) return;
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const autoPlan = params?.get('autoPlan');
+    if (!autoPlan) return;
+    autoStartedRef.current = true;
+    const planCode = autoPlan === 'basic' ? 'basic_monthly' : 'pro_monthly';
+    (async () => {
+      try {
+        const res = await fetch('/api/billing/start-subscription', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planCode })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || 'Checkout failed');
+        const t = json?.type as string | undefined;
+        const url = json?.url as string | undefined;
+        if (!url) return;
+        if (t === 'portal') window.open(url, '_blank', 'noopener,noreferrer'); else window.location.href = url;
+      } catch {}
+    })();
+  }, [isAuthed, subscribed]);
   return (
     <div className="not-prose flex flex-col gap-16 px-8 py-24 text-center">
       <div className="flex flex-col items-center justify-center gap-8">
@@ -206,13 +244,19 @@ export default function PricingPage() {
             >
               Monthly
             </TabsTrigger>
-            <TabsTrigger
-              value="yearly"
-              className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
-            >
-              Yearly
-              <Badge variant="secondary">20% off</Badge>
-            </TabsTrigger>
+            {(() => {
+              const hasYearly = Boolean(prices?.pro?.yearly?.unit_amount);
+              if (!hasYearly) return null;
+              return (
+                <TabsTrigger
+                  value="yearly"
+                  className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
+                >
+                  Yearly
+                  <Badge variant="secondary">20% off</Badge>
+                </TabsTrigger>
+              );
+            })()}
           </TabsList>
         </Tabs>
         <div className="mt-8 grid w-full max-w-4xl gap-4 lg:grid-cols-3">
@@ -237,7 +281,9 @@ export default function PricingPage() {
                   <p>{plan.description}</p>
                   {plan.id === "pro" ? (
                     (() => {
-                      const p = frequency === "yearly" ? prices.pro?.yearly : prices.pro?.monthly;
+                      const yearlyAvailable = Boolean(prices.pro?.yearly?.unit_amount);
+                      const effectiveFreq = yearlyAvailable ? frequency : "monthly";
+                      const p = effectiveFreq === "yearly" ? prices.pro?.yearly : prices.pro?.monthly;
                       const amount = p?.unit_amount ?? null;
                       const currency = (p?.currency ?? "USD").toUpperCase();
                       if (loadingPrices) {
@@ -254,8 +300,8 @@ export default function PricingPage() {
                               currency,
                               maximumFractionDigits: 0,
                             }}
-                            suffix={`/month, billed ${frequency}.`}
-                            value={frequency === "yearly" ? Math.round(amount / 12) / 100 : Math.round(amount) / 100}
+                            suffix={`/month, billed ${effectiveFreq}.`}
+                            value={effectiveFreq === "yearly" ? Math.round(amount / 12) / 100 : Math.round(amount) / 100}
                           />
                         );
                       }

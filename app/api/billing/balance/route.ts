@@ -31,8 +31,12 @@ export async function GET() {
       if (planRec) plan = { code: planRec.code, name: planRec.name, monthly_token_quota: Number(planRec.monthly_token_quota ?? 0) };
     }
 
+    const hasActiveSubscription = Boolean(sub && (sub.status === "trialing" || sub.status === "active" || sub.status === "past_due"));
+
     return NextResponse.json({
       balance: Number(balance ?? 0),
+      totalCredits: Number(balance ?? 0),
+      hasActiveSubscription,
       subscription: sub ? {
         status: sub.status,
         renew_at: sub.current_period_end,

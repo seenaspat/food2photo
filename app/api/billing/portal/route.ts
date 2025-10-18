@@ -1,23 +1,53 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "../../../../lib/supabase/server";
+import { getBillingProvider, getPolarClient } from "@/lib/polar/server";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     if (process.env.BILLING_ENABLED !== "true") {
       return NextResponse.json({ error: "Billing disabled" }, { status: 400 });
     }
 
-    const stripeSecret = process.env.STRIPE_SECRET_KEY;
-    if (!stripeSecret) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
-    const stripe = new Stripe(stripeSecret, { apiVersion: "2024-06-20" });
-
     const supabase = await createClient();
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id ?? null;
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const provider = getBillingProvider();
+    const wantsRedirect = (() => { try { const u = new URL(request.url); return u.searchParams.get("redirect") === "1"; } catch { return false; } })();
+    if (provider === "polar") {
+      const email = authData.user?.email ?? null;
+      const polar = getPolarClient();
+      let customerId: string | null = null;
+      // Try to locate existing Polar customer by email
+      if (email) {
+        try {
+          const iterator = await polar.customers.list({ email });
+          for await (const page of iterator) {
+            const items = (page as { result?: { items?: Array<{ id: string; email?: string | null }> } }).result?.items ?? [];
+            const match = items.find((c) => (c.email ?? null) === email);
+            if (match) { customerId = match.id; break; }
+          }
+        } catch {}
+      }
+      if (!customerId) {
+        if (!email) return NextResponse.json({ error: "Email required for Polar portal" }, { status: 400 });
+        const created = await polar.customers.create({ externalId: String(userId), email });
+        customerId = (created as { id: string }).id;
+      }
+      const session = await polar.customerSessions.create({ customerId: String(customerId) });
+      const url = (session as { customerPortalUrl?: string }).customerPortalUrl ?? null;
+      if (!url) return NextResponse.json({ error: "Portal unavailable" }, { status: 500 });
+      if (wantsRedirect) return NextResponse.redirect(url);
+      return NextResponse.json({ url }, { status: 200 });
+    }
+
+    const stripeSecret = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecret) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
+    const stripe = new Stripe(stripeSecret, { apiVersion: "2024-06-20" });
 
     const { data: sub } = await supabase
       .from("user_subscriptions")
@@ -38,6 +68,7 @@ export async function GET() {
       };
       if (portalConfigId) params.configuration = portalConfigId;
       const session = await stripe.billingPortal.sessions.create(params);
+      if (wantsRedirect && session.url) return NextResponse.redirect(session.url);
       return NextResponse.json({ url: session.url }, { status: 200 });
     } catch {
       const isLive = stripeSecret.startsWith("sk_live");

@@ -52,11 +52,11 @@ Reuse the existing billing UX but replace checkout/portal flows with Polar. Keep
 
 ### To-dos
 
-- [ ] Add BILLING_PROVIDER switch and Polar helper under lib/polar/
-- [ ] Implement /api/billing/start-subscription to talk to Polar and return portal/checkout URLs
-- [ ] Extend /api/billing/balance response with hasActiveSubscription and totals
-- [ ] Adjust /api/billing/prices to respect billing provider and remove credit packs for Polar
-- [ ] Update pricing page CTA flow, remove credits, add auto-continue
-- [ ] Implement /account page with profile info, logout, conditional Buy Credits
-- [ ] Expose Account link + updated Billing action in site navbar
+- [x] Add BILLING_PROVIDER switch and Polar helper under lib/polar/
+- [x] Implement /api/billing/start-subscription to talk to Polar and return portal/checkout URLs
+- [x] Extend /api/billing/balance response with hasActiveSubscription and totals
+- [x] Adjust /api/billing/prices to respect billing provider and remove credit packs for Polar
+- [x] Update pricing page CTA flow, remove credits, add auto-continue
+- [x] Implement /account page with profile info, logout, conditional Buy Credits
+- [x] Expose Account link + updated Billing action in site navbar
 - [ ] Document new env vars and provider switch details

@@ -94,6 +94,41 @@ If you wish to just develop locally and not deploy to Vercel, [follow the steps 
 
 > Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
 
+## Billing configuration
+
+Set up environment variables depending on your provider:
+
+```
+BILLING_ENABLED=true
+BILLING_PROVIDER=stripe # or polar
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_CREDIT_PRICE_ID=price_...
+STRIPE_BILLING_PORTAL_CONFIGURATION_ID=bp_...
+
+# Polar (optional if using POLAR)
+POLAR_PORTAL_URL=https://polar.sh/your-org/portal
+POLAR_CHECKOUT_PRO_MONTHLY=https://polar.sh/your-org/checkout?plan=pro_monthly
+POLAR_CHECKOUT_PRO_YEARLY=https://polar.sh/your-org/checkout?plan=pro_yearly
+POLAR_CHECKOUT_BASIC_MONTHLY=https://polar.sh/your-org/checkout?plan=basic_monthly
+POLAR_CHECKOUT_CREDITS_10=https://polar.sh/your-org/checkout?credits=10
+POLAR_CHECKOUT_CREDITS_50=https://polar.sh/your-org/checkout?credits=50
+
+# Optional Polar presentment prices (cents)
+POLAR_PRICE_PRO_MONTHLY_USD_CENTS=2900
+POLAR_PRICE_PRO_YEARLY_USD_CENTS=27800
+POLAR_PRICE_BASIC_MONTHLY_USD_CENTS=900
+POLAR_PRICE_CREDITS_10_USD_CENTS=500
+POLAR_PRICE_CREDITS_50_USD_CENTS=1800
+
+# Polar SDK (optional for dynamic checkouts)
+POLAR_ACCESS_TOKEN=plr_...
+POLAR_ORGANIZATION_ID=org_...
+POLAR_ENV=production # or sandbox
+```
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).
