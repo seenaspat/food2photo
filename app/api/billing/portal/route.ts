@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "../../../../lib/supabase/server";
-import { getBillingProvider, getPolarClient } from "@/lib/polar/server";
+import { getBillingProvider, getPolarClient, getPolarOrganizationId } from "@/lib/polar/server";
 
 export const runtime = "nodejs";
 
@@ -21,24 +21,45 @@ export async function GET(request: Request) {
     if (provider === "polar") {
       const email = authData.user?.email ?? null;
       const polar = getPolarClient();
+      const organizationId = getPolarOrganizationId();
       let customerId: string | null = null;
-      // Try to locate existing Polar customer by email
-      if (email) {
+
+      // 1) Prefer resolving via the user's latest Polar subscription id
+      try {
+        const { data: subRow } = await supabase
+          .from("user_subscriptions")
+          .select("stripe_subscription_id")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        const subId = (subRow?.stripe_subscription_id as string | null) ?? null;
+        if (subId) {
+          const sub = await polar.subscriptions.get({ id: subId });
+          customerId = (sub as unknown as { customerId?: string; customer_id?: string }).customerId ?? (sub as unknown as { customer_id?: string }).customer_id ?? null;
+        }
+      } catch {}
+
+      // 2) Fallback: locate customer by email within the org
+      if (!customerId && email) {
         try {
-          const iterator = await polar.customers.list({ email });
+          const iterator = await polar.customers.list({ organizationId, limit: 50, email });
           for await (const page of iterator) {
-            const items = (page as { result?: { items?: Array<{ id: string; email?: string | null }> } }).result?.items ?? [];
-            const match = items.find((c) => (c.email ?? null) === email);
+            const items = (page as { items?: Array<{ id: string; email?: string | null }> }).items ?? [];
+            const match = items.find((c) => (c.email ?? null)?.toLowerCase() === email.toLowerCase());
             if (match) { customerId = match.id; break; }
           }
         } catch {}
       }
+
+      // 3) Last resort: create a customer bound to the app user (only if no existing customer)
       if (!customerId) {
         if (!email) return NextResponse.json({ error: "Email required for Polar portal" }, { status: 400 });
         const created = await polar.customers.create({ externalId: String(userId), email });
         customerId = (created as { id: string }).id;
       }
-      const session = await polar.customerSessions.create({ customerId: String(customerId) });
+
+      const session = await polar.customerSessions.create({ customerId: String(customerId), returnUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing` });
       const url = (session as { customerPortalUrl?: string }).customerPortalUrl ?? null;
       if (!url) return NextResponse.json({ error: "Portal unavailable" }, { status: 500 });
       if (wantsRedirect) return NextResponse.redirect(url);

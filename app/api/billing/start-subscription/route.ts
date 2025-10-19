@@ -37,6 +37,44 @@ export async function POST(request: Request) {
       if (planCode.endsWith("_yearly")) planCode = planCode.replace(/_yearly$/, "_monthly");
 
       if (activeSub) {
+        // Create a customer-bound portal session for the current user
+        try {
+          const polar = getPolarClient();
+          const organizationId = getPolarOrganizationId();
+          // Resolve Polar customer via latest subscription id
+          const { data: subRow } = await (await createClient())
+            .from("user_subscriptions")
+            .select("stripe_subscription_id")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+          let customerId: string | null = null;
+          if (subRow?.stripe_subscription_id) {
+            const sub = await polar.subscriptions.get({ id: subRow.stripe_subscription_id });
+            customerId = (sub as unknown as { customerId?: string; customer_id?: string }).customerId ?? (sub as unknown as { customer_id?: string }).customer_id ?? null;
+          }
+          // Fallback: search by email if needed
+          if (!customerId) {
+            const { data: auth } = await (await createClient()).auth.getUser();
+            const email = auth.user?.email ?? null;
+            if (email) {
+              const iterator = await polar.customers.list({ organizationId, limit: 50, email });
+              for await (const page of iterator) {
+                const items = (page as { items?: Array<{ id: string; email?: string }> }).items ?? [];
+                const found = items.find((c) => (c as { email?: string }).email?.toLowerCase() === email.toLowerCase());
+                if (found) { customerId = found.id; break; }
+              }
+            }
+          }
+          if (customerId) {
+            const session = await polar.customerSessions.create({ customerId, returnUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing` });
+            const url = (session as { customerPortalUrl?: string }).customerPortalUrl ?? getPolarPortalUrl();
+            const payload: ResponseShape = { type: "portal", url };
+            return NextResponse.json(payload, { status: 200 });
+          }
+        } catch {}
+        // Last resort: generic portal URL
         const url = getPolarPortalUrl();
         const payload: ResponseShape = { type: "portal", url };
         return NextResponse.json(payload, { status: 200 });
