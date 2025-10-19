@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { z } from "zod";
 import { createClient } from "../../../../lib/supabase/server";
-import { getBillingProvider, getPolarCheckoutUrlForPlan, getPolarCheckoutUrlForCredits, getPolarPortalUrl, getPolarClient, getPolarOrganizationId, getPolarProductIdForKey } from "@/lib/polar/server";
+import { getBillingProvider, getPolarCheckoutUrlForCredits, getPolarPortalUrl, getPolarClient, getPolarOrganizationId, getPolarProductIdForKey } from "@/lib/polar/server";
 
 export const runtime = "nodejs";
 
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     const userId = authData.user?.id ?? null;
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const uid: string = userId as string;
+    const userEmail: string | null = (authData.user?.email ?? null) as string | null;
 
     // Duplicate Subscription Guard (provider-agnostic)
     const { data: activeSub } = await supabase
@@ -95,15 +96,40 @@ export async function POST(request: Request) {
 
       const provider = getBillingProvider();
       if (provider === "polar") {
-        // Intento 1: usar URL directa desde env
-        try {
-          const url = getPolarCheckoutUrlForPlan(planCode);
-          return NextResponse.json({ url }, { status: 200 });
-        } catch {}
-        // Intento 2: crear checkout vía SDK
+        // Crear checkout vía SDK asegurando asociación al customer del usuario autenticado
         try {
           const polar = getPolarClient();
           const organizationId = getPolarOrganizationId();
+
+          // Resolver customer Polar por sub previa, por email, o crearlo si no existe
+          let customerId: string | null = null;
+          try {
+            const { data: subRow } = await supabase
+              .from("user_subscriptions")
+              .select("stripe_subscription_id")
+              .eq("user_id", uid)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .single();
+            const subId = (subRow?.stripe_subscription_id as string | null) ?? null;
+            if (subId) {
+              const sub = await polar.subscriptions.get({ id: subId });
+              customerId = (sub as unknown as { customerId?: string; customer_id?: string }).customerId ?? (sub as unknown as { customer_id?: string }).customer_id ?? null;
+            }
+          } catch {}
+          // 2) Buscar por externalId (recomendado por Polar) y crear si no existe
+          if (!customerId) {
+            try {
+              const byExt = await polar.customers.getExternal({ externalId: String(uid) });
+              customerId = (byExt as { id: string }).id;
+            } catch {}
+          }
+          if (!customerId) {
+            const emailForCreate = userEmail ?? "no-email@local";
+            const created = await polar.customers.create({ externalId: String(uid), email: emailForCreate });
+            customerId = (created as { id: string }).id;
+          }
+
           let productId = getPolarProductIdForKey(planCode) ?? null;
           if (!productId) {
             const iterator = await polar.products.list({ organizationId, limit: 50 });
@@ -119,6 +145,10 @@ export async function POST(request: Request) {
           const checkout = await polar.checkouts.create({
             products: [productId],
             metadata: { user_id: uid, plan_code: planCode },
+            customerId: customerId ?? undefined,
+            customerEmail: userEmail ?? undefined,
+            externalCustomerId: String(uid),
+            customerMetadata: userEmail ? { email: userEmail } : undefined,
             successUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing?success=1`,
           });
           const url = (checkout as { url?: string }).url ?? "";
@@ -222,6 +252,9 @@ export async function POST(request: Request) {
         const checkout = await polar.checkouts.create({
           products: [productId],
           metadata: { user_id: uid, credit_tokens: String(creditPackTokens) },
+          externalCustomerId: String(uid),
+          customerEmail: userEmail ?? undefined,
+          customerMetadata: userEmail ? { email: userEmail } : undefined,
           successUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing?topup_success=1`,
         });
         const url = (checkout as { url?: string }).url ?? "";

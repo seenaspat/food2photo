@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getBillingProvider, getPolarCheckoutUrlForPlan, getPolarPortalUrl, getPolarClient, getPolarOrganizationId, getPolarProductIdForKey } from "@/lib/polar/server";
+import { getBillingProvider, getPolarPortalUrl, getPolarClient, getPolarOrganizationId, getPolarProductIdForKey } from "@/lib/polar/server";
 import Stripe from "stripe";
 
 export const runtime = "nodejs";
@@ -79,17 +79,42 @@ export async function POST(request: Request) {
         const payload: ResponseShape = { type: "portal", url };
         return NextResponse.json(payload, { status: 200 });
       }
-      // Try env checkout URL first
-      try {
-        const url = getPolarCheckoutUrlForPlan(planCode);
-        const payload: ResponseShape = { type: "checkout", url };
-        return NextResponse.json(payload, { status: 200 });
-      } catch {}
-
-      // Fallback: create checkout via SDK (requires matching product metadata.lookup_key === planCode)
+      // Crear checkout vía SDK asegurando asociación estricta al customer del usuario autenticado
       try {
         const polar = getPolarClient();
         const organizationId = getPolarOrganizationId();
+
+        // Resolver CustomerId en este orden: sub previa -> externalId -> crear
+        let customerId: string | null = null;
+        try {
+          const { data: subRow } = await (await createClient())
+            .from("user_subscriptions")
+            .select("stripe_subscription_id")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+          const subId = (subRow?.stripe_subscription_id as string | null) ?? null;
+          if (subId) {
+            const sub = await polar.subscriptions.get({ id: subId });
+            customerId = (sub as unknown as { customerId?: string; customer_id?: string }).customerId ?? (sub as unknown as { customer_id?: string }).customer_id ?? null;
+          }
+        } catch {}
+        if (!customerId) {
+          try {
+            const byExt = await polar.customers.getExternal({ externalId: String(userId) });
+            customerId = (byExt as { id: string }).id;
+          } catch {}
+        }
+        if (!customerId) {
+          // email de sesión para prefill; si no existe, usar placeholder válido
+          const { data: auth } = await (await createClient()).auth.getUser();
+          const emailForCreate = (auth.user?.email ?? "no-email@local");
+          const created = await polar.customers.create({ externalId: String(userId), email: emailForCreate });
+          customerId = (created as { id: string }).id;
+        }
+
+        // Resolver productId
         let productId = getPolarProductIdForKey(planCode) ?? null;
         if (!productId) {
           const iterator = await polar.products.list({ organizationId, limit: 50 });
@@ -102,9 +127,18 @@ export async function POST(request: Request) {
           }
         }
         if (!productId) throw new Error("Polar product not found for planCode");
+
+        // Email para pre-rellenar, pero la asociación la fija customerId/externalCustomerId
+        const { data: auth2 } = await (await createClient()).auth.getUser();
+        const sessionEmail = auth2.user?.email ?? null;
+
         const checkout = await polar.checkouts.create({
           products: [productId],
-          metadata: { user_id: userId, plan_code: planCode },
+          metadata: { user_id: String(userId), plan_code: planCode },
+          customerId: customerId ?? undefined,
+          externalCustomerId: String(userId),
+          customerEmail: sessionEmail ?? undefined,
+          customerMetadata: sessionEmail ? { email: sessionEmail } : undefined,
           successUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing?success=1`,
         });
         const url = (checkout as { url?: string }).url ?? "";

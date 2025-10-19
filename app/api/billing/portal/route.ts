@@ -40,23 +40,64 @@ export async function GET(request: Request) {
         }
       } catch {}
 
-      // 2) Fallback: locate customer by email within the org
+      // 2) Try by externalId (recommended)
+      if (!customerId) {
+        try {
+          const byExt = await polar.customers.getExternal({ externalId: String(userId) });
+          customerId = (byExt as { id: string }).id;
+        } catch {}
+      }
+      // 3) Fallback: locate customer by email within the org
       if (!customerId && email) {
         try {
           const iterator = await polar.customers.list({ organizationId, limit: 50, email });
           for await (const page of iterator) {
-            const items = (page as { items?: Array<{ id: string; email?: string | null }> }).items ?? [];
+            const items = (page as { result?: { items?: Array<{ id: string; email?: string | null }> }, items?: Array<{ id: string; email?: string | null }> }).result?.items
+              ?? (page as { items?: Array<{ id: string; email?: string | null }> }).items
+              ?? [];
             const match = items.find((c) => (c.email ?? null)?.toLowerCase() === email.toLowerCase());
             if (match) { customerId = match.id; break; }
           }
         } catch {}
       }
 
-      // 3) Last resort: create a customer bound to the app user (only if no existing customer)
+      // 4) Last resort: create a customer bound to the app user (only if no existing customer)
       if (!customerId) {
         if (!email) return NextResponse.json({ error: "Email required for Polar portal" }, { status: 400 });
-        const created = await polar.customers.create({ externalId: String(userId), email });
-        customerId = (created as { id: string }).id;
+        try {
+          const created = await polar.customers.create({ externalId: String(userId), email });
+          customerId = (created as { id: string }).id;
+        } catch (err) {
+          // Handle duplicate customer gracefully by resolving existing one
+          const msg = err instanceof Error ? err.message : String(err ?? "");
+          const isDup = /already exists/i.test(msg);
+          if (!isDup) return NextResponse.json({ error: msg || "POLAR customer create failed" }, { status: 500 });
+          // Try externalId
+          try {
+            const itExt = await polar.customers.list({ organizationId, externalId: String(userId) } as unknown as { organizationId: string });
+            for await (const page of itExt) {
+              const items = (page as { result?: { items?: Array<{ id: string; externalId?: string | null }> }, items?: Array<{ id: string; externalId?: string | null }> }).result?.items
+                ?? (page as { items?: Array<{ id: string; externalId?: string | null }> }).items
+                ?? [];
+              const m = items.find((c) => (c as { externalId?: string | null }).externalId === String(userId));
+              if (m) { customerId = m.id; break; }
+            }
+          } catch {}
+          // Fallback to email search again (race conditions)
+          if (!customerId) {
+            try {
+              const itMail = await polar.customers.list({ organizationId, limit: 50, email });
+              for await (const page of itMail) {
+                const items = (page as { result?: { items?: Array<{ id: string; email?: string | null }> }, items?: Array<{ id: string; email?: string | null }> }).result?.items
+                  ?? (page as { items?: Array<{ id: string; email?: string | null }> }).items
+                  ?? [];
+                const m = items.find((c) => (c.email ?? null)?.toLowerCase() === email.toLowerCase());
+                if (m) { customerId = m.id; break; }
+              }
+            } catch {}
+          }
+          if (!customerId) return NextResponse.json({ error: "POLAR customer exists but cannot be retrieved" }, { status: 500 });
+        }
       }
 
       const session = await polar.customerSessions.create({ customerId: String(customerId), returnUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing` });
