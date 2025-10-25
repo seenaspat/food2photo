@@ -1,6 +1,5 @@
 "use client";
 
-import NumberFlow from "@number-flow/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,18 +12,37 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ArrowRight, BadgeCheck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const plans = [
+const CREDIT_PACK_PRICES = {
+  credits_10: { amount: 5, currency: "USD" },
+  credits_50: { amount: 18, currency: "USD" },
+} as const;
+
+type SubscriptionPlanCode = "basic_monthly" | "pro_monthly";
+type CreditPackKey = keyof typeof CREDIT_PACK_PRICES;
+
+const CREDIT_PACKS: Array<{ key: CreditPackKey; label: string; tokens: number }> = [
+  { key: "credits_10", label: "10 Credits", tokens: 10 },
+  { key: "credits_50", label: "50 Credits", tokens: 50 },
+];
+
+type PricingPlan = {
+  id: "basic" | "pro" | "enterprise";
+  name: string;
+  monthlyLabel?: string;
+  description: string;
+  features: string[];
+  cta: string;
+  popular?: boolean;
+};
+
+const plans: PricingPlan[] = [
   {
     id: "basic",
     name: "Basic",
-    price: {
-      monthly: "$9/month",
-      yearly: "Monthly only",
-    },
+    monthlyLabel: "$9/month",
     description: "Great for solo owners who need a few shots each month.",
     features: [
       "20 generations / month",
@@ -39,10 +57,7 @@ const plans = [
   {
     id: "pro",
     name: "Pro",
-    price: {
-      monthly: 29,
-      yearly: 278, // used only as a fallback; live prices come from Stripe
-    },
+    monthlyLabel: "$29/month",
     description: "Everything you need for consistent, production‑quality photos.",
     features: [
       "100 generations / month",
@@ -58,10 +73,7 @@ const plans = [
   {
     id: "enterprise",
     name: "Business",
-    price: {
-      monthly: "Get in touch",
-      yearly: "Get in touch",
-    },
+    monthlyLabel: "Get in touch",
     description: "Custom backgrounds, presets and integrations.",
     features: [
       "Custom backgrounds & presets",
@@ -74,108 +86,71 @@ const plans = [
 ];
 
 export default function PricingPage() {
-  const [frequency, setFrequency] = useState<string>("monthly");
-  const proPlanPriceId = useMemo(() => (frequency === "yearly" ? "pro_yearly" : "pro_monthly"), [frequency]);
-  const [subscribed, setSubscribed] = useState<boolean>(false);
-  const [renewAt, setRenewAt] = useState<string | null>(null);
-  const [isAuthed, setIsAuthed] = useState<boolean>(false);
-  const [prices, setPrices] = useState<{
-    pro?: { monthly?: { unit_amount: number | null; currency: string | null }; yearly?: { unit_amount: number | null; currency: string | null } };
-    basic?: { monthly?: { unit_amount: number | null; currency: string | null } };
-    credits?: { c10?: { unit_amount: number | null; currency: string | null }; c50?: { unit_amount: number | null; currency: string | null } };
-  }>({});
-  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
-  const [loadingBilling, setLoadingBilling] = useState<boolean>(true);
-  const [loadingPrices, setLoadingPrices] = useState<boolean>(true);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [isEligibleForTopUps, setIsEligibleForTopUps] = useState(false);
+  const hasCheckedRef = useRef(false);
 
   useEffect(() => {
-    (async () => {
-      try {
-        // auth gate
-        let authed = false;
-        try {
-          const supabase = createClient();
-          const { data } = await supabase.auth.getUser();
-          authed = Boolean(data.user?.id);
-          setIsAuthed(authed);
-        } catch {}
+    setIsHydrated(true);
+  }, []);
 
-        if (authed) {
-          const res = await fetch("/api/billing/balance", { method: "GET" });
-          if (res.ok) {
-            const json = await res.json();
-            const status = json?.subscription?.status as string | undefined;
-            const renew = json?.subscription?.renew_at as string | undefined;
-            const willCancel = Boolean(json?.subscription?.cancel_at_period_end);
-            const isActive = status === "trialing" || status === "active" || status === "past_due";
-            setSubscribed(Boolean(isActive));
-            setRenewAt(renew ?? null);
-            setCancelAtPeriodEnd(willCancel);
-          }
-        } else {
-          setSubscribed(false);
-          setRenewAt(null);
-          setCancelAtPeriodEnd(false);
+  useEffect(() => {
+    if (hasCheckedRef.current) return;
+    hasCheckedRef.current = true;
+
+    const fetchBillingState = async () => {
+      try {
+        const supabase = createClient();
+        const { data } = await supabase.auth.getUser();
+        if (!data.user?.id) {
+          setIsEligibleForTopUps(false);
+          return;
         }
-      } catch {} finally { setLoadingBilling(false); }
-      try {
-        const search = typeof window !== 'undefined' ? window.location.search : '';
-        const r = await fetch(`/api/billing/prices${search}`, { method: "GET" });
-        const j = await r.json();
-        setPrices(j ?? {});
-      } catch {} finally { setLoadingPrices(false); }
-    })();
+
+        const res = await fetch("/api/billing/balance", { method: "GET" });
+        if (!res.ok) {
+          setIsEligibleForTopUps(false);
+          return;
+        }
+        const json = await res.json();
+        const hasActiveSubscription = Boolean(json?.hasActiveSubscription);
+        const remainingCredits = Number(json?.totalCredits ?? json?.balance ?? 0);
+        setIsEligibleForTopUps(hasActiveSubscription && remainingCredits <= 0);
+      } catch {
+        setIsEligibleForTopUps(false);
+      }
+    };
+
+    void fetchBillingState();
   }, []);
-
-  const createCheckout = useCallback(async () => {
+  const startSubscription = useCallback(async (planCode: SubscriptionPlanCode) => {
     try {
-      const body = { planCode: proPlanPriceId };
       const res = await fetch("/api/billing/start-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ planCode }),
       });
       const json = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/auth/login";
+        return;
+      }
       if (!res.ok) throw new Error(json?.error || "Checkout failed");
-      const t = json?.type as string | undefined;
+      const type = json?.type as "portal" | "checkout" | undefined;
       const url = json?.url as string | undefined;
       if (!url) throw new Error("No URL returned");
-      if (t === "portal") {
-        window.open(url, "_blank", "noopener,noreferrer");
-      } else {
+      if (type === "portal") {
         window.location.href = url;
+        return;
       }
-    } catch (e) {
-      console.error(e);
-      alert("Could not start checkout. Please try again.");
-    }
-  }, [proPlanPriceId]);
-
-  const createBasicCheckout = useCallback(async () => {
-    try {
-      const body = { planCode: "basic_monthly" };
-      const res = await fetch("/api/billing/start-subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Checkout failed");
-      const t = json?.type as string | undefined;
-      const url = json?.url as string | undefined;
-      if (!url) throw new Error("No URL returned");
-      if (t === "portal") {
-        window.open(url, "_blank", "noopener,noreferrer");
-      } else {
-        window.location.href = url;
-      }
+      window.location.href = url;
     } catch (e) {
       console.error(e);
       alert("Could not start checkout. Please try again.");
     }
   }, []);
 
-  const buyCredits = useCallback(async (lookupKey: string, tokens: number) => {
+  const buyCredits = useCallback(async (lookupKey: CreditPackKey, tokens: number) => {
     try {
       const res = await fetch("/api/billing/create-checkout-session", {
         method: "POST",
@@ -183,6 +158,10 @@ export default function PricingPage() {
         body: JSON.stringify({ creditPackTokens: tokens, creditLookupKey: lookupKey }),
       });
       const json = await res.json();
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/auth/login";
+        return;
+      }
       if (!res.ok) throw new Error(json?.error || "Checkout failed");
       if (json?.url) window.location.href = json.url as string;
     } catch (e) {
@@ -190,42 +169,6 @@ export default function PricingPage() {
       alert("Could not start checkout. Please try again.");
     }
   }, []);
-
-  const openPortal = useCallback(async () => {
-    try {
-      const res = await fetch("/api/billing/portal", { method: "GET" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Portal failed");
-      if (json?.url) window.location.href = json.url as string;
-    } catch (e) {
-      console.error(e);
-      alert("Could not open billing portal. Please try again.");
-    }
-  }, []);
-
-  // Auto-continue after login via ?autoPlan=basic|pro
-  const autoStartedRef = useRef(false);
-  useEffect(() => {
-    if (!isAuthed || subscribed || autoStartedRef.current) return;
-    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-    const autoPlan = params?.get('autoPlan');
-    if (!autoPlan) return;
-    autoStartedRef.current = true;
-    const planCode = autoPlan === 'basic' ? 'basic_monthly' : 'pro_monthly';
-    (async () => {
-      try {
-        const res = await fetch('/api/billing/start-subscription', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planCode })
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || 'Checkout failed');
-        const t = json?.type as string | undefined;
-        const url = json?.url as string | undefined;
-        if (!url) return;
-        if (t === 'portal') window.open(url, '_blank', 'noopener,noreferrer'); else window.location.href = url;
-      } catch {}
-    })();
-  }, [isAuthed, subscribed]);
   return (
     <div className="not-prose flex flex-col gap-16 px-8 py-24 text-center">
       <div className="flex flex-col items-center justify-center gap-8">
@@ -236,29 +179,6 @@ export default function PricingPage() {
           Managing a business is hard enough, so why not make your life easier?
           Our pricing plans are simple, transparent and scale with you.
         </p>
-        <Tabs value={frequency} onValueChange={setFrequency}>
-          <TabsList className="rounded-full bg-zinc-100 dark:bg-zinc-900 p-1 ring-1 ring-zinc-300 dark:ring-zinc-700">
-            <TabsTrigger
-              value="monthly"
-              className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
-            >
-              Monthly
-            </TabsTrigger>
-            {(() => {
-              const hasYearly = Boolean(prices?.pro?.yearly?.unit_amount);
-              if (!hasYearly) return null;
-              return (
-                <TabsTrigger
-                  value="yearly"
-                  className="rounded-full px-4 py-1.5 text-zinc-700 dark:text-zinc-300 data-[state=active]:bg-white data-[state=active]:text-zinc-900 dark:data-[state=active]:bg-zinc-800 dark:data-[state=active]:text-white data-[state=active]:border-zinc-300 dark:data-[state=active]:border-zinc-700"
-                >
-                  Yearly
-                  <Badge variant="secondary">20% off</Badge>
-                </TabsTrigger>
-              );
-            })()}
-          </TabsList>
-        </Tabs>
         <div className="mt-8 grid w-full max-w-4xl gap-4 lg:grid-cols-3">
           {plans.map((plan) => (
             <Card
@@ -279,67 +199,9 @@ export default function PricingPage() {
                 </CardTitle>
                 <CardDescription>
                   <p>{plan.description}</p>
-                  {plan.id === "pro" ? (
-                    (() => {
-                      const yearlyAvailable = Boolean(prices.pro?.yearly?.unit_amount);
-                      const effectiveFreq = yearlyAvailable ? frequency : "monthly";
-                      const p = effectiveFreq === "yearly" ? prices.pro?.yearly : prices.pro?.monthly;
-                      const amount = p?.unit_amount ?? null;
-                      const currency = (p?.currency ?? "USD").toUpperCase();
-                      if (loadingPrices) {
-                        return (
-                          <span className="inline-block h-5 w-28 rounded bg-muted animate-pulse" aria-busy="true" />
-                        );
-                      }
-                      if (typeof amount === "number") {
-                        return (
-                          <NumberFlow
-                            className="font-medium text-foreground"
-                            format={{
-                              style: "currency",
-                              currency,
-                              maximumFractionDigits: 0,
-                            }}
-                            suffix={`/month, billed ${effectiveFreq}.`}
-                            value={effectiveFreq === "yearly" ? Math.round(amount / 12) / 100 : Math.round(amount) / 100}
-                          />
-                        );
-                      }
-                      return (
-                        <span className="font-medium text-foreground">
-                          {plan.price[frequency as keyof typeof plan.price]}.
-                        </span>
-                      );
-                    })()
-                  ) : plan.id === "basic" ? (
-                    (() => {
-                      const p = prices.basic?.monthly;
-                      const amount = p?.unit_amount ?? null;
-                      const currency = (p?.currency ?? "USD").toUpperCase();
-                      if (loadingPrices) {
-                        return (
-                          <span className="inline-block h-5 w-28 rounded bg-muted animate-pulse" aria-busy="true" />
-                        );
-                      }
-                      if (typeof amount === "number") {
-                        return (
-                          <NumberFlow
-                            className="font-medium text-foreground"
-                            format={{ style: "currency", currency, maximumFractionDigits: 0 }}
-                            suffix="/month"
-                            value={Math.round(amount) / 100}
-                          />
-                        );
-                      }
-                      return (
-                        <span className="font-medium text-foreground">{plan.price.monthly}.</span>
-                      );
-                    })()
-                  ) : (
-                    <span className="font-medium text-foreground">
-                      {plan.price[frequency as keyof typeof plan.price]}.
-                    </span>
-                  )}
+                  <span className="font-medium text-foreground">
+                    {plan.monthlyLabel}.
+                  </span>
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-2">
@@ -358,18 +220,18 @@ export default function PricingPage() {
                   <Button
                     className="w-full"
                     variant={plan.popular ? "default" : "secondary"}
-                    onClick={subscribed ? openPortal : (isAuthed ? createCheckout : () => (window.location.href = "/auth/login"))}
+                    onClick={() => startSubscription("pro_monthly")}
                   >
-                    {subscribed ? "Manage billing" : (isAuthed ? plan.cta : "Log in to subscribe")}
+                    {plan.cta}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 ) : plan.id === "basic" ? (
-                  <Button className="w-full" variant="secondary" onClick={isAuthed ? createBasicCheckout : () => (window.location.href = "/auth/login") }>
-                    {isAuthed ? plan.cta : "Log in to subscribe"}
+                  <Button className="w-full" variant="secondary" onClick={() => startSubscription("basic_monthly")}>
+                    {plan.cta}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 ) : (
-                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/contact") }>
+                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/contact")}>
                     {plan.cta}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
@@ -378,62 +240,36 @@ export default function PricingPage() {
             </Card>
           ))}
         </div>
-        {subscribed && (
+        {isHydrated && isEligibleForTopUps ? (
           <div className="mt-10 w-full max-w-4xl text-left">
             <h2 className="text-lg font-medium mb-3">Top up your credits</h2>
             <p className="text-sm text-muted-foreground mb-4">Need more credits this month? Top up anytime.</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              { key: "credits_10", label: "10 Credits", tokens: 10, price: prices.credits?.c10 },
-              { key: "credits_50", label: "50 Credits", tokens: 50, price: prices.credits?.c50 },
-            ].map((pack) => (
-              <Card key={pack.key}>
-                <CardHeader>
-                  <CardTitle className="text-base">{pack.label}</CardTitle>
-                  <CardDescription>
-                    {loadingPrices ? (
-                      <span className="inline-block h-5 w-24 rounded bg-muted animate-pulse" aria-busy="true" />
-                    ) : typeof pack.price?.unit_amount === "number" ? (
-                      <NumberFlow
-                        className="font-medium text-foreground"
-                        format={{ style: "currency", currency: (pack.price?.currency ?? "USD").toUpperCase(), maximumFractionDigits: 0 }}
-                        value={Math.round(pack.price.unit_amount) / 100}
-                      />
-                    ) : (
-                      <span className="font-medium text-foreground">{pack.key === "credits_10" ? "$5" : "$18"}</span>
-                    )}
-                  </CardDescription>
-                </CardHeader>
-                <CardFooter>
-                  <Button className="w-full" variant="secondary" onClick={isAuthed ? () => buyCredits(pack.key, pack.tokens) : () => (window.location.href = "/auth/login")}>
-                    {isAuthed ? "Buy credits" : "Log in to buy"}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {CREDIT_PACKS.map((pack) => (
+                <Card key={pack.key}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{pack.label}</CardTitle>
+                    <CardDescription>
+                      {CREDIT_PACK_PRICES[pack.key].currency === "USD" ? (
+                        <span className="font-medium text-foreground">${CREDIT_PACK_PRICES[pack.key].amount}</span>
+                      ) : (
+                        <span className="font-medium text-foreground">
+                          {CREDIT_PACK_PRICES[pack.key].amount} {CREDIT_PACK_PRICES[pack.key].currency}
+                        </span>
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardFooter>
+                    <Button className="w-full" variant="secondary" onClick={() => buyCredits(pack.key, pack.tokens)}>
+                      Buy credits
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
           </div>
-        </div>
-        )}
-        <div className="mt-2 text-sm text-muted-foreground min-h-5">
-          {loadingBilling ? (
-            <div className="inline-block h-4 w-64 rounded bg-muted animate-pulse" aria-busy="true" />
-          ) : subscribed ? (
-            cancelAtPeriodEnd ? (
-              <>
-                <span>Your subscription will not renew.</span>{" "}
-                {renewAt ? <span>Access ends on {new Date(renewAt).toLocaleDateString()}.</span> : null}
-              </>
-            ) : (
-              <>
-                <span>You have an active subscription.</span>{" "}
-                {renewAt ? <span>Renews on {new Date(renewAt).toLocaleDateString()}.</span> : null}
-              </>
-            )
-          ) : (
-            <span>No active subscription yet. Choose a plan to get started.</span>
-          )}
-        </div>
+        ) : null}
       </div>
     </div>
   );
