@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { getBillingProvider, getPolarClient, getPolarProductIdForKey } from "@/lib/polar/server";
 
 export const runtime = "nodejs";
 
@@ -39,11 +40,65 @@ export async function GET(request: Request) {
 		if (process.env.BILLING_ENABLED !== "true") {
 			return NextResponse.json({ error: "Billing disabled" }, { status: 400 });
 		}
+
+		const wantedCurrency = detectCurrencyFromRequest(request);
+
+		const provider = getBillingProvider();
+		if (provider === "polar") {
+			// Polar: solo USD y planes mensuales. Leer precios reales desde producto por ID.
+			const polar = getPolarClient();
+			async function getUsdPriceCentsForKey(key: string): Promise<number | null> {
+				const productId = getPolarProductIdForKey(key);
+				if (!productId) return null;
+				try {
+					const product = await polar.products.get({ id: productId });
+					for (const price of product.prices ?? []) {
+						const p: unknown = price;
+						if (
+							typeof p === 'object' && p !== null &&
+							(price as { amountType?: unknown }).amountType === 'fixed' &&
+							typeof (price as { priceAmount?: unknown }).priceAmount === 'number' &&
+							typeof (price as { priceCurrency?: unknown }).priceCurrency === 'string' &&
+							((price as { priceCurrency: string }).priceCurrency.toLowerCase() === 'usd')
+						) {
+							return (price as { priceAmount: number }).priceAmount;
+						}
+					}
+					return null;
+				} catch {
+					return null;
+				}
+			}
+
+			const [proM, basicM, c10, c50] = await Promise.all([
+				getUsdPriceCentsForKey('pro_monthly'),
+				getUsdPriceCentsForKey('basic_monthly'),
+				getUsdPriceCentsForKey('credits_10'),
+				getUsdPriceCentsForKey('credits_50'),
+			]);
+
+			const res = NextResponse.json({
+				currency: 'USD',
+				pro: {
+					monthly: { unit_amount: proM, currency: 'usd', lookup_key: 'pro_monthly' },
+					yearly: { unit_amount: null, currency: null, lookup_key: null },
+				},
+				basic: {
+					monthly: { unit_amount: basicM, currency: 'usd', lookup_key: 'basic_monthly' },
+				},
+				credits: {
+					c10: { unit_amount: c10, currency: 'usd', lookup_key: 'credits_10' },
+					c50: { unit_amount: c50, currency: 'usd', lookup_key: 'credits_50' },
+				},
+			});
+			res.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
+			res.headers.set("Vary", "X-Vercel-IP-Country, Accept-Language");
+			return res;
+		}
+
 		const stripeSecret = process.env.STRIPE_SECRET_KEY;
 		if (!stripeSecret) return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
 		const stripe = new Stripe(stripeSecret, { apiVersion: "2024-06-20" });
-
-		const wantedCurrency = detectCurrencyFromRequest(request);
 
 		// Base Stripe Price lookup_keys. We rely on presentment prices (currency_options)
 		const BASE_KEYS = {
@@ -61,7 +116,7 @@ export async function GET(request: Request) {
 				expand: ['data.currency_options'],
 			});
 			const p = search.data?.[0] ?? null;
-			if (!p) return { unit_amount: null, currency: null, lookup_key: null };
+			if (!p) return { unit_amount: null, currency: null, lookup_key: null } as { unit_amount: number | null; currency: string | null; lookup_key: string | null };
 			const presentment = p as Stripe.Price & { currency_options?: Record<string, { unit_amount?: number | null }> };
 			const desiredLower = desiredCurrency.toLowerCase();
 			const opt = presentment.currency_options?.[desiredLower];
