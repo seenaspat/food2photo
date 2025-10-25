@@ -19,9 +19,9 @@ export default async function AccountPage() {
 
   const summary: BillingSummary = await getBillingSummary(supabase, user.id);
   const hasActiveSubscription = Boolean(summary?.hasActiveSubscription);
-  const balance = Number(summary?.balance ?? 0);
   const subRemaining = Number(summary?.breakdown?.subscription?.remaining_in_period ?? 0);
   const topupRemaining = Number(summary?.breakdown?.topup?.remaining_for_now ?? 0);
+  const balance = Number(summary?.balance ?? subRemaining + topupRemaining);
 
   return (
     <div className="px-6 py-10 max-w-3xl mx-auto">
@@ -44,7 +44,7 @@ export default async function AccountPage() {
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="text-sm">Subscription: {hasActiveSubscription ? "Active" : "None"}</div>
-            <div className="text-sm">Credits: {subRemaining + topupRemaining}</div>
+            <div className="text-sm">Credits: {balance}</div>
             {topupRemaining > 0 ? (
               <div className="text-xs text-muted-foreground">Top-up credits: {topupRemaining}</div>
             ) : null}
