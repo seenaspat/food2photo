@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,7 +19,7 @@ const CREDIT_PACK_PRICES = {
   credits_50: { amount: 18, currency: "USD" },
 } as const;
 
-type SubscriptionPlanCode = "basic_monthly" | "pro_monthly";
+type SubscriptionPlanCode = "pro_monthly";
 type CreditPackKey = keyof typeof CREDIT_PACK_PRICES;
 
 const CREDIT_PACKS: Array<{ key: CreditPackKey; label: string; tokens: number }> = [
@@ -29,59 +28,29 @@ const CREDIT_PACKS: Array<{ key: CreditPackKey; label: string; tokens: number }>
 ];
 
 type PricingPlan = {
-  id: "basic" | "pro" | "enterprise";
+  id: "pro";
   name: string;
   monthlyLabel?: string;
   description: string;
   features: string[];
   cta: string;
-  popular?: boolean;
 };
 
 const plans: PricingPlan[] = [
   {
-    id: "basic",
-    name: "Basic",
-    monthlyLabel: "$9/month",
-    description: "Great for solo owners who need a few shots each month.",
-    features: [
-      "20 generations / month",
-      "Upload dish & background",
-      "Lens looks & aspect ratios",
-      "Curated presets & style templates",
-      "Standard-quality PNG/JPEG outputs",
-      "Standard support & reliable processing",
-    ],
-    cta: "Subscribe to Basic",
-  },
-  {
     id: "pro",
     name: "Pro",
-    monthlyLabel: "$29/month",
-    description: "Everything you need for consistent, production‑quality photos.",
+    monthlyLabel: "$19/month",
+    description: "Production-ready food photography with predictable monthly credits.",
     features: [
-      "100 generations / month",
-      "Upload dish & background customization",
+      "60 pro-quality generations / month",
+      "Upload dish + background customization",
       "Advanced lens looks & aspect ratios",
       "Full preset library & pro templates",
       "High-quality PNG/JPEG outputs",
       "Priority support + priority queue",
     ],
     cta: "Subscribe to Pro",
-    popular: true,
-  },
-  {
-    id: "enterprise",
-    name: "Business",
-    monthlyLabel: "Get in touch",
-    description: "Custom backgrounds, presets and integrations.",
-    features: [
-      "Custom backgrounds & presets",
-      "SLAs and priority support",
-      "Usage-based throughput guarantees",
-      "Custom integrations",
-    ],
-    cta: "Contact us",
   },
 ];
 
@@ -179,20 +148,14 @@ export default function PricingPage() {
           Managing a business is hard enough, so why not make your life easier?
           Our pricing plans are simple, transparent and scale with you.
         </p>
-        <div className="mt-8 grid w-full max-w-4xl gap-4 lg:grid-cols-3">
+        <div className="mt-8 grid w-full max-w-xl gap-4 place-items-center">
           {plans.map((plan) => (
             <Card
               className={cn(
-                "relative w-full text-left",
-                plan.popular && "ring-2 ring-primary",
+                "relative w-full text-left ring-2 ring-primary",
               )}
               key={plan.id}
             >
-              {plan.popular && (
-                <Badge className="-translate-x-1/2 -translate-y-1/2 absolute top-0 left-1/2 rounded-full">
-                  Popular
-                </Badge>
-              )}
               <CardHeader>
                 <CardTitle className="font-medium text-xl">
                   {plan.name}
@@ -216,30 +179,17 @@ export default function PricingPage() {
                 ))}
               </CardContent>
               <CardFooter>
-                {plan.id === "pro" ? (
-                  <Button
-                    className="w-full"
-                    variant={plan.popular ? "default" : "secondary"}
-                    onClick={() => startSubscription("pro_monthly")}
-                  >
-                    {plan.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : plan.id === "basic" ? (
-                  <Button className="w-full" variant="secondary" onClick={() => startSubscription("basic_monthly")}>
-                    {plan.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/contact")}>
-                    {plan.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                )}
+                <Button className="w-full" onClick={() => startSubscription("pro_monthly")}>
+                  {plan.cta}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </CardFooter>
             </Card>
           ))}
         </div>
+        <p className="text-sm text-muted-foreground">
+          Need more than 60 generations each month? <a className="underline" href="/contact">Reach out</a> for a custom plan.
+        </p>
         {isHydrated && isEligibleForTopUps ? (
           <div className="mt-10 w-full max-w-4xl text-left">
             <h2 className="text-lg font-medium mb-3">Top up your credits</h2>

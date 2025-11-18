@@ -597,29 +597,26 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 					</Card>
 
                   {creditBalance !== null && creditBalance <= 0 ? (
+                    (() => {
+                      const isProPlan = Boolean(userPlan?.code && userPlan.code.toLowerCase().startsWith("pro"));
+                      return (
                     <Card className="border-primary/50">
                       <CardContent className="pt-6 space-y-3">
                         <div className="text-center space-y-2">
                           <p className="text-sm font-medium">You&apos;re out of credits</p>
                           <p className="text-xs text-muted-foreground">
-                            {userPlan?.code === "pro" 
-                              ? "Top up your credits to keep creating stunning food photos"
-                              : userPlan?.code === "basic"
-                              ? "Upgrade to Pro for 100 credits/month + priority queue"
-                              : "Get more credits to continue enhancing your food photos"
-                            }
+                            {isProPlan
+                              ? "Top up to keep generating hyperreal food photos."
+                              : "Subscribe to Pro for 60 pro-quality generations per month."}
                           </p>
                         </div>
                         <Button className="w-full" size="lg" onClick={() => { persistUiState(); window.location.href = "/pricing?need_credits=1"; }}>
-                          {userPlan?.code === "pro" 
-                            ? "Buy Credit Top-Up" 
-                            : userPlan?.code === "basic"
-                            ? "Upgrade to Pro"
-                            : "View Plans & Pricing"
-                          }
+                          {isProPlan ? "Buy Credit Top-Up" : "View Pro Plan"}
                         </Button>
                       </CardContent>
                     </Card>
+                      );
+                    })()
                   ) : (
                     <Button className="w-full" size="lg" disabled={!canEnhance || isGenerating} onClick={async () => {
                     if (!uploaded) return;

@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 
 		const provider = getBillingProvider();
 		if (provider === "polar") {
-			// Polar: solo USD y planes mensuales. Leer precios reales desde producto por ID.
+			// Polar: solo USD, único plan Pro mensual + paquetes de créditos.
 			const polar = getPolarClient();
 			async function getUsdPriceCentsForKey(key: string): Promise<number | null> {
 				const productId = getPolarProductIdForKey(key);
@@ -70,9 +70,8 @@ export async function GET(request: Request) {
 				}
 			}
 
-			const [proM, basicM, c10, c50] = await Promise.all([
+			const [proMonthly, credits10, credits50] = await Promise.all([
 				getUsdPriceCentsForKey('pro_monthly'),
-				getUsdPriceCentsForKey('basic_monthly'),
 				getUsdPriceCentsForKey('credits_10'),
 				getUsdPriceCentsForKey('credits_50'),
 			]);
@@ -80,15 +79,11 @@ export async function GET(request: Request) {
 			const res = NextResponse.json({
 				currency: 'USD',
 				pro: {
-					monthly: { unit_amount: proM, currency: 'usd', lookup_key: 'pro_monthly' },
-					yearly: { unit_amount: null, currency: null, lookup_key: null },
-				},
-				basic: {
-					monthly: { unit_amount: basicM, currency: 'usd', lookup_key: 'basic_monthly' },
+					monthly: { unit_amount: proMonthly, currency: 'usd', lookup_key: 'pro_monthly' },
 				},
 				credits: {
-					c10: { unit_amount: c10, currency: 'usd', lookup_key: 'credits_10' },
-					c50: { unit_amount: c50, currency: 'usd', lookup_key: 'credits_50' },
+					c10: { unit_amount: credits10, currency: 'usd', lookup_key: 'credits_10' },
+					c50: { unit_amount: credits50, currency: 'usd', lookup_key: 'credits_50' },
 				},
 			});
 			res.headers.set("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=86400");
@@ -103,8 +98,6 @@ export async function GET(request: Request) {
 		// Base Stripe Price lookup_keys. We rely on presentment prices (currency_options)
 		const BASE_KEYS = {
 			pro_monthly: "pro_monthly",
-			pro_yearly: "pro_yearly",
-			basic_monthly: "basic_monthly",
 			credits_10: "credits_10",
 			credits_50: "credits_50",
 		} as const;
@@ -126,10 +119,8 @@ export async function GET(request: Request) {
 			return { unit_amount: p.unit_amount ?? null, currency: p.currency, lookup_key: (p.lookup_key ?? null) as string | null };
 		}
 
-		const [proMonthly, proYearly, basicMonthly, credits10, credits50] = await Promise.all([
+		const [proMonthly, credits10, credits50] = await Promise.all([
 			getByLookupKey(BASE_KEYS.pro_monthly, wantedCurrency),
-			getByLookupKey(BASE_KEYS.pro_yearly, wantedCurrency),
-			getByLookupKey(BASE_KEYS.basic_monthly, wantedCurrency),
 			getByLookupKey(BASE_KEYS.credits_10, wantedCurrency),
 			getByLookupKey(BASE_KEYS.credits_50, wantedCurrency),
 		]);
@@ -138,10 +129,6 @@ export async function GET(request: Request) {
 			currency: wantedCurrency,
 			pro: {
 				monthly: proMonthly,
-				yearly: proYearly,
-			},
-			basic: {
-				monthly: basicMonthly,
 			},
 			credits: {
 				c10: credits10,

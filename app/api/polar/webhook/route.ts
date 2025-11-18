@@ -36,25 +36,37 @@ function computeEventKey(type: string, data: Record<string, unknown>, eventTimes
   return ts ? `polar:${type}:${primary}:${ts}` : `polar:${type}:${primary}`;
 }
 
+const KNOWN_PLAN_MAP: Record<string, string> = {
+  pro_monthly: "pro_monthly",
+  pro_yearly: "pro_monthly",
+  basic_monthly: "pro_monthly",
+  basic_yearly: "pro_monthly",
+};
+
+function canonicalPlanCode(code: string | null): string | null {
+  if (!code) return null;
+  const normalized = code.endsWith("_yearly") ? code.replace(/_yearly$/, "_monthly") : code;
+  return KNOWN_PLAN_MAP[normalized] ?? normalized;
+}
+
 function resolvePlanCodeFromPayload(obj: Record<string, unknown>): string | null {
   // 1) product.metadata.lookup_key (Portal plan changes often update product, not metadata)
   const product = isRecord(obj["product"]) ? (obj["product"] as Record<string, unknown>) : null;
   if (product) {
     const pMeta = isRecord(product["metadata"]) ? (product["metadata"] as Record<string, unknown>) : null;
     const lk = pMeta ? getString(pMeta, "lookup_key") : null;
-    if (lk) return lk;
+    if (lk) return canonicalPlanCode(lk);
   }
   // 2) metadata.plan_code
   const meta = isRecord(obj["metadata"]) ? (obj["metadata"] as Record<string, unknown>) : null;
   const metaPlan = meta ? getString(meta, "plan_code") : null;
-  if (metaPlan) return metaPlan;
+  if (metaPlan) return canonicalPlanCode(metaPlan);
   // 3) Map via configured product/price IDs
   const productId = getString(obj as Record<string, unknown>, "product_id") || (product ? getString(product, "id") : null);
   const priceId = getString(obj as Record<string, unknown>, "price_id") || (isRecord(obj["price"]) ? getString(obj["price"] as Record<string, unknown>, "id") : null);
-  const KNOWN: string[] = ["basic_monthly", "pro_monthly", "pro_yearly", "basic_yearly"]; // safe superset
-  for (const code of KNOWN) {
-    const configured = getPolarProductIdForKey(code);
-    if (configured && (configured === productId || configured === priceId)) return code;
+  for (const [legacyCode, canonical] of Object.entries(KNOWN_PLAN_MAP)) {
+    const configured = getPolarProductIdForKey(legacyCode);
+    if (configured && (configured === productId || configured === priceId)) return canonicalPlanCode(canonical);
   }
   return null;
 }
@@ -113,7 +125,7 @@ export async function POST(request: Request) {
         const metadata = isRecord(data["metadata"]) ? (data["metadata"] as Record<string, unknown>) : (isRecord(data["customer_metadata"]) ? (data["customer_metadata"] as Record<string, unknown>) : null);
         if (!metadata) break;
         const userId = getString(metadata, "user_id");
-        const planCode = getString(metadata, "plan_code");
+        const planCode = canonicalPlanCode(getString(metadata, "plan_code"));
         const subscriptionId = getString(data, "subscription_id");
         if (userId && subscriptionId) {
           // Insert or update last row for this user (no unique key on user_id)
@@ -154,7 +166,7 @@ export async function POST(request: Request) {
         const effectiveEnd = getDateFlexible(data, "current_period_end", "currentPeriodEnd");
         const metadata = isRecord(data["metadata"]) ? (data["metadata"] as Record<string, unknown>) : null;
         const userId = metadata ? getString(metadata, "user_id") : null;
-        const planCode = resolvePlanCodeFromPayload(data) ?? null;
+        const planCode = canonicalPlanCode(resolvePlanCodeFromPayload(data));
         if (subscriptionId && userId) {
           const { data: existing } = await supabase
             .from("user_subscriptions")
@@ -284,7 +296,7 @@ export async function POST(request: Request) {
           const subId = getString(sub, "id");
           const subsMeta = isRecord(sub["metadata"]) ? (sub["metadata"] as Record<string, unknown>) : null;
           const userId = subsMeta ? getString(subsMeta, "user_id") : null;
-          const planCode = subsMeta ? getString(subsMeta, "plan_code") : null;
+          const planCode = canonicalPlanCode(subsMeta ? getString(subsMeta, "plan_code") : null);
           const startDate = getDateFlexible(sub, "current_period_start", "currentPeriodStart");
           const endDate = getDateFlexible(sub, "current_period_end", "currentPeriodEnd");
           if (subId && userId) {
