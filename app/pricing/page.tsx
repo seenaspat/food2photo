@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -35,7 +34,6 @@ type PricingPlan = {
   description: string;
   features: string[];
   cta: string;
-  popular?: boolean;
 };
 
 const plans: PricingPlan[] = [
@@ -53,7 +51,6 @@ const plans: PricingPlan[] = [
       "Priority support + priority queue",
     ],
     cta: "Subscribe to Pro",
-    popular: true,
   },
 ];
 
@@ -151,20 +148,14 @@ export default function PricingPage() {
           Managing a business is hard enough, so why not make your life easier?
           Our pricing plans are simple, transparent and scale with you.
         </p>
-        <div className="mt-8 grid w-full max-w-4xl gap-4 lg:grid-cols-3">
+        <div className="mt-8 grid w-full max-w-xl gap-4 place-items-center">
           {plans.map((plan) => (
             <Card
               className={cn(
-                "relative w-full text-left",
-                plan.popular && "ring-2 ring-primary",
+                "relative w-full text-left ring-2 ring-primary",
               )}
               key={plan.id}
             >
-              {plan.popular && (
-                <Badge className="-translate-x-1/2 -translate-y-1/2 absolute top-0 left-1/2 rounded-full">
-                  Popular
-                </Badge>
-              )}
               <CardHeader>
                 <CardTitle className="font-medium text-xl">
                   {plan.name}
@@ -188,11 +179,7 @@ export default function PricingPage() {
                 ))}
               </CardContent>
               <CardFooter>
-                <Button
-                  className="w-full"
-                  variant={plan.popular ? "default" : "secondary"}
-                  onClick={() => startSubscription("pro_monthly")}
-                >
+                <Button className="w-full" onClick={() => startSubscription("pro_monthly")}>
                   {plan.cta}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
