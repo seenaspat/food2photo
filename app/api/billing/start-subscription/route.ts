@@ -7,6 +7,12 @@ export const runtime = "nodejs";
 
 type ResponseShape = { type: "portal" | "checkout"; url: string };
 
+const PRO_PLAN_CODE = "pro_monthly";
+
+function normalizePlanCode(input: string): string {
+  return input.endsWith("_yearly") ? input.replace(/_yearly$/, "_monthly") : input;
+}
+
 export async function POST(request: Request) {
   try {
     if (process.env.BILLING_ENABLED !== "true") {
@@ -14,8 +20,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    let planCode = typeof body?.planCode === "string" && body.planCode.length > 0 ? (body.planCode as string) : null;
-    if (!planCode) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    const requestedPlan = typeof body?.planCode === "string" && body.planCode.length > 0 ? (body.planCode as string) : null;
+    if (!requestedPlan) return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    const planCode = normalizePlanCode(requestedPlan);
+    if (planCode !== PRO_PLAN_CODE) {
+      return NextResponse.json({ error: "Unsupported plan" }, { status: 400 });
+    }
 
     const supabase = await createClient();
     const { data: authData } = await supabase.auth.getUser();
@@ -33,9 +43,6 @@ export async function POST(request: Request) {
 
     const provider = getBillingProvider();
     if (provider === "polar") {
-      // Normalize any yearly plan to monthly (Polar only supports monthly here)
-      if (planCode.endsWith("_yearly")) planCode = planCode.replace(/_yearly$/, "_monthly");
-
       if (activeSub) {
         // Create a customer-bound portal session for the current user
         try {

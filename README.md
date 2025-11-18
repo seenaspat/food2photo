@@ -111,15 +111,11 @@ STRIPE_BILLING_PORTAL_CONFIGURATION_ID=bp_...
 # Polar (optional if using POLAR)
 POLAR_PORTAL_URL=https://polar.sh/your-org/portal
 POLAR_CHECKOUT_PRO_MONTHLY=https://polar.sh/your-org/checkout?plan=pro_monthly
-POLAR_CHECKOUT_PRO_YEARLY=https://polar.sh/your-org/checkout?plan=pro_yearly
-POLAR_CHECKOUT_BASIC_MONTHLY=https://polar.sh/your-org/checkout?plan=basic_monthly
 POLAR_CHECKOUT_CREDITS_10=https://polar.sh/your-org/checkout?credits=10
 POLAR_CHECKOUT_CREDITS_50=https://polar.sh/your-org/checkout?credits=50
 
 # Optional Polar presentment prices (cents)
-POLAR_PRICE_PRO_MONTHLY_USD_CENTS=2900
-POLAR_PRICE_PRO_YEARLY_USD_CENTS=27800
-POLAR_PRICE_BASIC_MONTHLY_USD_CENTS=900
+POLAR_PRICE_PRO_MONTHLY_USD_CENTS=1900
 POLAR_PRICE_CREDITS_10_USD_CENTS=500
 POLAR_PRICE_CREDITS_50_USD_CENTS=1800
 

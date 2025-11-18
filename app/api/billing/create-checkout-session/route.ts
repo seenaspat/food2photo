@@ -11,6 +11,12 @@ const InputSchema = z.union([
   z.object({ creditPackTokens: z.number().int().positive(), planCode: z.never().optional(), creditLookupKey: z.string().min(1).optional() }),
 ]);
 
+const PRO_PLAN_CODE = "pro_monthly";
+
+function normalizePlanCode(input: string): string {
+  return input.endsWith("_yearly") ? input.replace(/_yearly$/, "_monthly") : input;
+}
+
 export async function POST(request: Request) {
   try {
     if (process.env.BILLING_ENABLED !== "true") {
@@ -88,10 +94,9 @@ export async function POST(request: Request) {
     }
 
     if (data.planCode) {
-      let planCode = data.planCode as string;
-      const providerForPlan = getBillingProvider();
-      if (providerForPlan === "polar" && planCode.endsWith("_yearly")) {
-        planCode = planCode.replace(/_yearly$/, "_monthly");
+      const planCode = normalizePlanCode(data.planCode as string);
+      if (planCode !== PRO_PLAN_CODE) {
+        return NextResponse.json({ error: "Unsupported plan" }, { status: 400 });
       }
 
       const provider = getBillingProvider();

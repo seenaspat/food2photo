@@ -20,7 +20,7 @@ const CREDIT_PACK_PRICES = {
   credits_50: { amount: 18, currency: "USD" },
 } as const;
 
-type SubscriptionPlanCode = "basic_monthly" | "pro_monthly";
+type SubscriptionPlanCode = "pro_monthly";
 type CreditPackKey = keyof typeof CREDIT_PACK_PRICES;
 
 const CREDIT_PACKS: Array<{ key: CreditPackKey; label: string; tokens: number }> = [
@@ -29,7 +29,7 @@ const CREDIT_PACKS: Array<{ key: CreditPackKey; label: string; tokens: number }>
 ];
 
 type PricingPlan = {
-  id: "basic" | "pro" | "enterprise";
+  id: "pro";
   name: string;
   monthlyLabel?: string;
   description: string;
@@ -40,28 +40,13 @@ type PricingPlan = {
 
 const plans: PricingPlan[] = [
   {
-    id: "basic",
-    name: "Basic",
-    monthlyLabel: "$9/month",
-    description: "Great for solo owners who need a few shots each month.",
-    features: [
-      "20 generations / month",
-      "Upload dish & background",
-      "Lens looks & aspect ratios",
-      "Curated presets & style templates",
-      "Standard-quality PNG/JPEG outputs",
-      "Standard support & reliable processing",
-    ],
-    cta: "Subscribe to Basic",
-  },
-  {
     id: "pro",
     name: "Pro",
-    monthlyLabel: "$29/month",
-    description: "Everything you need for consistent, production‑quality photos.",
+    monthlyLabel: "$19/month",
+    description: "Production-ready food photography with predictable monthly credits.",
     features: [
-      "100 generations / month",
-      "Upload dish & background customization",
+      "60 pro-quality generations / month",
+      "Upload dish + background customization",
       "Advanced lens looks & aspect ratios",
       "Full preset library & pro templates",
       "High-quality PNG/JPEG outputs",
@@ -69,19 +54,6 @@ const plans: PricingPlan[] = [
     ],
     cta: "Subscribe to Pro",
     popular: true,
-  },
-  {
-    id: "enterprise",
-    name: "Business",
-    monthlyLabel: "Get in touch",
-    description: "Custom backgrounds, presets and integrations.",
-    features: [
-      "Custom backgrounds & presets",
-      "SLAs and priority support",
-      "Usage-based throughput guarantees",
-      "Custom integrations",
-    ],
-    cta: "Contact us",
   },
 ];
 
@@ -216,30 +188,21 @@ export default function PricingPage() {
                 ))}
               </CardContent>
               <CardFooter>
-                {plan.id === "pro" ? (
-                  <Button
-                    className="w-full"
-                    variant={plan.popular ? "default" : "secondary"}
-                    onClick={() => startSubscription("pro_monthly")}
-                  >
-                    {plan.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : plan.id === "basic" ? (
-                  <Button className="w-full" variant="secondary" onClick={() => startSubscription("basic_monthly")}>
-                    {plan.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button className="w-full" variant="secondary" onClick={() => (window.location.href = "/contact")}>
-                    {plan.cta}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                )}
+                <Button
+                  className="w-full"
+                  variant={plan.popular ? "default" : "secondary"}
+                  onClick={() => startSubscription("pro_monthly")}
+                >
+                  {plan.cta}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </CardFooter>
             </Card>
           ))}
         </div>
+        <p className="text-sm text-muted-foreground">
+          Need more than 60 generations each month? <a className="underline" href="/contact">Reach out</a> for a custom plan.
+        </p>
         {isHydrated && isEligibleForTopUps ? (
           <div className="mt-10 w-full max-w-4xl text-left">
             <h2 className="text-lg font-medium mb-3">Top up your credits</h2>
