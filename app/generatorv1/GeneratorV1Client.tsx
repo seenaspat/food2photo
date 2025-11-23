@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import NextImage from "next/image";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import FileUpload from "@/components/kokonutui/file-upload";
@@ -382,7 +382,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 								<div className="mt-3 flex items-center gap-3">
 									<div className="relative size-16 overflow-hidden rounded border">
 										{dishPreviewUrl ? (
-											<Image src={dishPreviewUrl} alt="Dish preview" fill sizes="64px" className="object-cover" unoptimized />
+											<NextImage src={dishPreviewUrl} alt="Dish preview" fill sizes="64px" className="object-cover" unoptimized />
 										) : null}
 									</div>
 									<p className="text-xs text-muted-foreground truncate flex-1">{uploaded.name}</p>
@@ -446,7 +446,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																						{bg.id === "none" ? (
 																							<ImageIcon className="h-8 w-8 text-muted-foreground" />
 																						) : (
-																							<Image
+																							<NextImage
 																								src={bg.thumb}
 																								alt={bg.label}
 																								fill
@@ -496,7 +496,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
                                                                             <Card className={(selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary " : "") + "overflow-hidden h-full"}>
 																				<CardContent className="p-0">
 																					<div className="relative aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
-																						<Image
+																						<NextImage
 																							src={it.thumbUrl}
 																							alt={it.label}
 																							fill
@@ -543,7 +543,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 												<div className="mt-3 flex items-center gap-3">
 													<div className="relative size-16 overflow-hidden rounded border">
 														{backgroundPreviewUrl ? (
-															<Image
+															<NextImage
 																src={backgroundPreviewUrl}
 																alt="Background preview"
 																fill
@@ -779,7 +779,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 									</div>
 								) : (
 									<div className="relative aspect-square w-full rounded-md border overflow-hidden">
-										<Image
+										<NextImage
 											src={generatedImageUrl}
 											alt="Generated"
 											fill
