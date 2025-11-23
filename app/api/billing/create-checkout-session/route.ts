@@ -228,6 +228,33 @@ export async function POST(request: Request) {
         const polar = getPolarClient();
         const organizationId = getPolarOrganizationId();
 
+        // Ensure we reuse existing Polar customer so duplicate emails don't fail
+        let polarCustomerId: string | null = null;
+        try {
+          const existing = await polar.customers.getExternal({ externalId: String(uid) });
+          polarCustomerId = (existing as { id?: string } | null)?.id ?? null;
+        } catch {}
+        if (!polarCustomerId && userEmail) {
+          try {
+            const iterator = await polar.customers.list({ organizationId, limit: 50, email: userEmail });
+            for await (const page of iterator) {
+              const items =
+                (page as { result?: { items?: Array<{ id: string; email?: string | null }> } })?.result?.items ??
+                (page as { items?: Array<{ id: string; email?: string | null }> })?.items ??
+                [];
+              const match = items.find((c) => (c.email ?? "").toLowerCase() === userEmail.toLowerCase());
+              if (match) {
+                polarCustomerId = match.id;
+                break;
+              }
+            }
+          } catch {}
+        }
+        if (!polarCustomerId) {
+          const created = await polar.customers.create({ externalId: String(uid), email: userEmail ?? "no-email@local" });
+          polarCustomerId = (created as { id: string }).id;
+        }
+
         // Resolver productId a partir de env y/o listado
         let productId: string | null = getPolarProductIdForKey(lookupKey);
 
@@ -278,6 +305,7 @@ export async function POST(request: Request) {
           products: [productId],
           metadata: { user_id: uid, credit_tokens: String(creditPackTokens) },
           externalCustomerId: String(uid),
+          customerId: polarCustomerId ?? undefined,
           customerEmail: userEmail ?? undefined,
           customerMetadata: userEmail ? { email: userEmail } : undefined,
           successUrl: `${process.env.NEXT_PUBLIC_SITE_URL}/pricing?topup_success=1`,
