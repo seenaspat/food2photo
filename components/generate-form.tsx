@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { useState } from "react";
 import { Upload, Image as ImageIcon, Info, Sparkles } from "lucide-react";
 
@@ -34,23 +35,33 @@ export function GenerateForm() {
 
   React.useEffect(() => {
     if (!dishFile) {
-      if (dishPreviewUrl) URL.revokeObjectURL(dishPreviewUrl);
-      setDishPreviewUrl(null);
+      setDishPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
       return;
     }
     const url = URL.createObjectURL(dishFile);
-    setDishPreviewUrl(url);
+    setDishPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
     return () => URL.revokeObjectURL(url);
   }, [dishFile]);
 
   React.useEffect(() => {
     if (!backgroundFile) {
-      if (backgroundPreviewUrl) URL.revokeObjectURL(backgroundPreviewUrl);
-      setBackgroundPreviewUrl(null);
+      setBackgroundPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
       return;
     }
     const url = URL.createObjectURL(backgroundFile);
-    setBackgroundPreviewUrl(url);
+    setBackgroundPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
     return () => URL.revokeObjectURL(url);
   }, [backgroundFile]);
 
@@ -76,10 +87,16 @@ export function GenerateForm() {
               />
               {dishFile ? (
                 <div className="flex items-center gap-3">
-                  <div className="size-16 overflow-hidden rounded border">
+                  <div className="relative size-16 overflow-hidden rounded border">
                     {dishPreviewUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={dishPreviewUrl} alt="Dish preview" className="h-full w-full object-cover" />
+                      <Image
+                        src={dishPreviewUrl}
+                        alt="Dish preview"
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                        unoptimized
+                      />
                     ) : null}
                   </div>
                   <p className="text-xs text-muted-foreground">{dishFile.name}</p>
@@ -102,10 +119,16 @@ export function GenerateForm() {
               />
               {backgroundFile ? (
                 <div className="flex items-center gap-3">
-                  <div className="size-16 overflow-hidden rounded border">
+                  <div className="relative size-16 overflow-hidden rounded border">
                     {backgroundPreviewUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={backgroundPreviewUrl} alt="Background preview" className="h-full w-full object-cover" />
+                      <Image
+                        src={backgroundPreviewUrl}
+                        alt="Background preview"
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                        unoptimized
+                      />
                     ) : null}
                   </div>
                   <p className="text-xs text-muted-foreground">{backgroundFile.name}</p>

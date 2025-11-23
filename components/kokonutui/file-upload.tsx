@@ -483,6 +483,8 @@ export default function FileUpload({
             validateFileType,
             validateFileAction,
             handleError,
+            uploadDelay,
+            onUploadSuccessAction,
         ]
     );
 

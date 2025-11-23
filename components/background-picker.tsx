@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo } from "react";
 import type { BackgroundFamily, BackgroundItem } from "../lib/backgrounds/types";
 import { Card, CardContent } from "./ui/card";
@@ -47,8 +48,14 @@ export default function BackgroundPicker(props: BackgroundPickerProps) {
 								<button key={bgRef} onClick={() => props.onSelect(bgRef)} className="text-left">
 									<Card className={selected ? "border-primary ring-1 ring-primary" : ""}>
 										<CardContent className="p-0">
-											<div className="aspect-square overflow-hidden bg-muted/30">
-												<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
+											<div className="relative aspect-square overflow-hidden bg-muted/30">
+												<Image
+													src={it.thumbUrl}
+													alt={it.label}
+													fill
+													className="object-cover"
+													sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+												/>
 											</div>
 											<div className="p-2 text-sm leading-5 h-10 overflow-hidden" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{it.label}</div>
 										</CardContent>

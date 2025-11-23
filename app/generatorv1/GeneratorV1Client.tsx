@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import FileUpload from "@/components/kokonutui/file-upload";
@@ -180,23 +181,33 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	// Local preview URLs
 	useEffect(() => {
 		if (!uploaded) {
-			if (dishPreviewUrl) URL.revokeObjectURL(dishPreviewUrl);
-			setDishPreviewUrl(null);
+			setDishPreviewUrl((prev) => {
+				if (prev) URL.revokeObjectURL(prev);
+				return null;
+			});
 			return;
 		}
 		const url = URL.createObjectURL(uploaded);
-		setDishPreviewUrl(url);
+		setDishPreviewUrl((prev) => {
+			if (prev) URL.revokeObjectURL(prev);
+			return url;
+		});
 		return () => URL.revokeObjectURL(url);
 	}, [uploaded]);
 
 	useEffect(() => {
 		if (!backgroundUpload) {
-			if (backgroundPreviewUrl) URL.revokeObjectURL(backgroundPreviewUrl);
-			setBackgroundPreviewUrl(null);
+			setBackgroundPreviewUrl((prev) => {
+				if (prev) URL.revokeObjectURL(prev);
+				return null;
+			});
 			return;
 		}
 		const url = URL.createObjectURL(backgroundUpload);
-		setBackgroundPreviewUrl(url);
+		setBackgroundPreviewUrl((prev) => {
+			if (prev) URL.revokeObjectURL(prev);
+			return url;
+		});
 		return () => URL.revokeObjectURL(url);
 	}, [backgroundUpload]);
 
@@ -369,9 +380,9 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 							/>
 							{uploaded ? (
 								<div className="mt-3 flex items-center gap-3">
-									<div className="size-16 overflow-hidden rounded border">
+									<div className="relative size-16 overflow-hidden rounded border">
 										{dishPreviewUrl ? (
-											<img src={dishPreviewUrl} alt="Dish preview" className="h-full w-full object-cover" />
+											<Image src={dishPreviewUrl} alt="Dish preview" fill sizes="64px" className="object-cover" unoptimized />
 										) : null}
 									</div>
 									<p className="text-xs text-muted-foreground truncate flex-1">{uploaded.name}</p>
@@ -431,11 +442,17 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																			<button key={bg.id} onClick={() => { setSelectedBackground(bg.id); setSelectedTopdownRef(null); }} className="text-left">
                                                                             <Card className={(selectedBackground === bg.id ? "border-primary ring-1 ring-primary " : "") + "overflow-hidden h-full"}>
 																				<CardContent className="p-0">
-																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+																					<div className="relative aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
 																						{bg.id === "none" ? (
 																							<ImageIcon className="h-8 w-8 text-muted-foreground" />
 																						) : (
-																							<img src={bg.thumb} alt={bg.label} className="h-full w-full object-cover" />
+																							<Image
+																								src={bg.thumb}
+																								alt={bg.label}
+																								fill
+																								className="object-cover"
+																								sizes="(max-width: 640px) 50vw, 33vw"
+																							/>
 																						)}
 																					</div>
                                                         <div className="p-2 text-sm leading-5 overflow-hidden">
@@ -478,8 +495,14 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 																			<button key={it.id} onClick={() => { const ref = `v4-topdown:${it.id}`; setSelectedTopdownRef(ref); setSelectedBackground('none'); }} className="text-left">
                                                                             <Card className={(selectedTopdownRef === `v4-topdown:${it.id}` ? "border-primary ring-1 ring-primary " : "") + "overflow-hidden h-full"}>
 																				<CardContent className="p-0">
-																					<div className="aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
-																						<img src={it.thumbUrl} alt={it.label} className="h-full w-full object-cover" />
+																					<div className="relative aspect-square bg-muted/30 overflow-hidden flex items-center justify-center">
+																						<Image
+																							src={it.thumbUrl}
+																							alt={it.label}
+																							fill
+																							className="object-cover"
+																							sizes="(max-width: 640px) 50vw, 33vw"
+																						/>
 																					</div>
                                                         <div className="p-2 text-sm leading-5 overflow-hidden">
                                                             <div className="h-10 line-clamp-2 break-words" title={it.label} aria-label={it.label}>
@@ -518,9 +541,16 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 											/>
 											{backgroundUpload ? (
 												<div className="mt-3 flex items-center gap-3">
-													<div className="size-16 overflow-hidden rounded border">
+													<div className="relative size-16 overflow-hidden rounded border">
 														{backgroundPreviewUrl ? (
-															<img src={backgroundPreviewUrl} alt="Background preview" className="h-full w-full object-cover" />
+															<Image
+																src={backgroundPreviewUrl}
+																alt="Background preview"
+																fill
+																sizes="64px"
+																className="object-cover"
+																unoptimized
+															/>
 														) : null}
 													</div>
 													<p className="text-xs text-muted-foreground truncate flex-1">{backgroundUpload.name}</p>
@@ -748,7 +778,16 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 										</div>
 									</div>
 								) : (
-									<img src={generatedImageUrl} alt="Generated" className="aspect-square w-full rounded-md border object-cover" />
+									<div className="relative aspect-square w-full rounded-md border overflow-hidden">
+										<Image
+											src={generatedImageUrl}
+											alt="Generated"
+											fill
+											className="object-cover"
+											sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 480px"
+											unoptimized
+										/>
+									</div>
 								)}
 								{generatedImageUrl ? (
 								<>

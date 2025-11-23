@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +41,7 @@ export function Carousel({ className, children, opts }: CarouselProps) {
 	const align = opts?.align ?? "start";
 	const loop = opts?.loop ?? false;
 
-	const updateScrollState = () => {
+	const updateScrollState = useCallback(() => {
 		const el = containerRef.current;
 		if (!el) return;
 		const maxScrollLeft = el.scrollWidth - el.clientWidth;
@@ -49,7 +49,7 @@ export function Carousel({ className, children, opts }: CarouselProps) {
 		setCanScrollNext(loop ? true : el.scrollLeft < maxScrollLeft - 1);
 		const index = Math.round(el.scrollLeft / Math.max(1, el.clientWidth));
 		setCurrentIndex(index);
-	};
+	}, [loop]);
 
 	useEffect(() => {
 		updateScrollState();
@@ -63,9 +63,10 @@ export function Carousel({ className, children, opts }: CarouselProps) {
 			el.removeEventListener("scroll", onScroll);
 			ro.disconnect();
 		};
-	}, [loop]);
+	}, [updateScrollState]);
 
-	const scrollBy = (direction: 1 | -1) => {
+	const scrollBy = useCallback(
+		(direction: 1 | -1) => {
 		const el = containerRef.current;
 		if (!el) return;
 		const step = Math.max(1, Math.round(el.clientWidth));
@@ -78,18 +79,20 @@ export function Carousel({ className, children, opts }: CarouselProps) {
 			el.scrollTo({ left: nextLeft, behavior: "smooth" });
 		}
 		updateScrollState();
-	};
+		},
+		[loop, updateScrollState]
+	);
 
-	const scrollToIndex = (index: number) => {
+	const scrollToIndex = useCallback((index: number) => {
 		const el = containerRef.current;
 		if (!el) return;
 		el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
 		setCurrentIndex(index);
-	};
+	}, []);
 
 	const value = useMemo<CarouselContextValue>(
 		() => ({ containerRef, scrollBy, scrollToIndex, canScrollPrev, canScrollNext, currentIndex, align, loop }),
-		[canScrollPrev, canScrollNext, currentIndex, align, loop]
+		[scrollBy, scrollToIndex, canScrollPrev, canScrollNext, currentIndex, align, loop]
 	);
 
 	return (
