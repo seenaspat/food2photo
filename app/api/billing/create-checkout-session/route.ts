@@ -129,6 +129,26 @@ export async function POST(request: Request) {
               customerId = (byExt as { id: string }).id;
             } catch {}
           }
+          // 3) Si existe un cliente con el mismo email en la organización, reutilizarlo para evitar errores de duplicado.
+          if (!customerId && userEmail) {
+            try {
+              const iterator = await polar.customers.list({ organizationId, limit: 50, email: userEmail });
+              for await (const page of iterator) {
+                const items =
+                  (page as { result?: { items?: Array<{ id: string; email?: string | null }> } })?.result?.items ??
+                  (page as { items?: Array<{ id: string; email?: string | null }> })?.items ??
+                  [];
+                const match = items.find((c) => {
+                  const candidate = (c.email ?? null)?.toLowerCase() ?? null;
+                  return candidate === userEmail.toLowerCase();
+                });
+                if (match) {
+                  customerId = match.id;
+                  break;
+                }
+              }
+            } catch {}
+          }
           if (!customerId) {
             const emailForCreate = userEmail ?? "no-email@local";
             const created = await polar.customers.create({ externalId: String(uid), email: emailForCreate });
