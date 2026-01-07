@@ -52,7 +52,21 @@ export async function buildCompositionPrompt(input: BuildPromptInput): Promise<s
 		.replaceAll('{{ASPECT_RATIO}}', input.aspectRatio || 'original')
 		.replaceAll('{{PLATE_POLICY}}', input.platePolicy)
 		.replaceAll('{{ENV_SPEC_BLOCK}}', envSpecBlock);
-	return filled;
+
+	// Add critical requirements reinforcement at the end
+	// Recency bias helps ensure these requirements are followed
+	const reinforcement = `
+
+---
+CRITICAL REQUIREMENTS (MUST FOLLOW):
+1. OUTPUT ASPECT RATIO: Generate the image with EXACTLY ${input.aspectRatio} aspect ratio. Fill edge-to-edge with no borders or letterboxing.
+2. DISH PRESERVATION: Preserve ALL components, arrangement, and layer order from DISH_SPEC. Do not add, remove, or reposition elements.
+3. ENVIRONMENT FIDELITY: Match the environment style, lighting, and atmosphere described in ENV_SPEC_BLOCK precisely.
+4. REALISM: The final image must look like a professional photograph, not a composite or generated image.
+5. FRAMING: ${input.lensMap.cropRule}
+---`;
+
+	return filled + reinforcement;
 }
 
 export async function loadImageBIfNeeded(resolved: ResolvedBackground | null): Promise<string | null> {
