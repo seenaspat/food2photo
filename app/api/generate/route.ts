@@ -71,6 +71,25 @@ export async function POST(request: Request) {
     const legacyBgPreset = String(formData.get("bgPreset") || "");
     const effectiveBgRef = bgRefRaw || (legacyBgPreset ? `v3-ambience:${legacyBgPreset}` : "");
 
+    // Handle custom background ID (user-created backgrounds)
+    const customBgId = String(formData.get("customBgId") || "");
+    let customBgSnippet = "";
+    if (customBgId) {
+      const { data: customBg, error: customBgError } = await supabase
+        .from("custom_backgrounds")
+        .select("prompt_snippet")
+        .eq("id", customBgId)
+        .eq("user_id", userId)
+        .single();
+      
+      if (customBgError || !customBg) {
+        if (debug) console.log("[bg] custom background not found:", customBgId);
+      } else {
+        customBgSnippet = customBg.prompt_snippet;
+        if (debug) console.log("[bg] using custom background snippet");
+      }
+    }
+
     // Normalize aspect ratio using native support
     const aspectRatio = normalizeAspectRatio(aspectRatioRaw || "1:1");
 
@@ -179,13 +198,15 @@ export async function POST(request: Request) {
       }
     }
 
-    const bgLine = effectiveBgRef
-      ? `Environment preset: ${effectiveBgRef} via template + vars`
-      : (backgroundDataUrl
-        ? "Image B: the target environment/background"
-        : (usedFallbackNoBgPreset
-          ? "Environment preset: v3-ambience:no-background-default via template + vars"
-          : "No background provided; synthesize a plausible environment consistent with restaurant and dish photography"));
+    const bgLine = customBgSnippet
+      ? `Custom Environment Specification:\n${customBgSnippet}`
+      : effectiveBgRef
+        ? `Environment preset: ${effectiveBgRef} via template + vars`
+        : (backgroundDataUrl
+          ? "Image B: the target environment/background"
+          : (usedFallbackNoBgPreset
+            ? "Environment preset: v3-ambience:no-background-default via template + vars"
+            : "No background provided; synthesize a plausible environment consistent with restaurant and dish photography"));
     const platePolicy = preservePlate ? "AND its original plate/vessel exactly" : "ONLY (render a new plate/vessel suitable to the environment)";
 
     const narrativeText = await buildCompositionPrompt({
