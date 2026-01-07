@@ -1,23 +1,23 @@
 "use client";
 
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { PURPOSE_PRESETS } from "@/lib/presets/purpose-presets";
 import type { LucideIcon } from "lucide-react";
 import {
-    AtSign,
-    Briefcase,
-    Clapperboard,
-    FileText,
-    Play,
-    Smartphone,
-    Square,
-    UtensilsCrossed,
+  AtSign,
+  Briefcase,
+  Clapperboard,
+  FileText,
+  Play,
+  Smartphone,
+  Square,
+  UtensilsCrossed,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -45,7 +45,7 @@ export function PurposePicker({
   return (
     <div className={className}>
       <label className="text-sm font-medium mb-2 block">
-        What's this photo for?
+        What&apos;s this photo for?
       </label>
       <Select value={value} onValueChange={onValueChange}>
         <SelectTrigger className="w-full">

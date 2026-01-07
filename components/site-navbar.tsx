@@ -1,23 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { Menu, Sparkles, User, LogOut, CreditCard } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import {
-  NavigationMenu,
-  NavigationMenuIndicator,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuViewport,
-} from "@/components/ui/navigation-menu";
-import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AuthMenuClient } from "@/components/auth-menu-client";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetHeader, SheetFooter, SheetClose } from "@/components/ui/sheet";
-import { usePathname } from "next/navigation";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+    NavigationMenu,
+    NavigationMenuIndicator,
+    NavigationMenuItem,
+    NavigationMenuLink,
+    NavigationMenuList,
+    NavigationMenuViewport,
+} from "@/components/ui/navigation-menu";
+import { Sheet, SheetClose, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
+import { CreditCard, LogOut, Menu, Sparkles, User } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: boolean }) {
   const headerRef = useRef<HTMLElement | null>(null);
@@ -91,7 +91,7 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                 </NavigationMenuItem>
                 {isAuthed ? (
                   <NavigationMenuItem>
-                    <Link href="/generatorv1" className="inline-flex items-center gap-1.5 p-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground transition-colors">
+                    <Link href="/dashboard" className="inline-flex items-center gap-1.5 p-2 text-sm rounded-sm hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground transition-colors">
                       <span>Generate</span>
                       <Sparkles className="h-4 w-4 text-primary" />
                     </Link>
@@ -174,7 +174,7 @@ export function SiteNavbar({ initialIsAuthed = false }: { initialIsAuthed?: bool
                 {isAuthed ? (
                   <SheetClose asChild>
                     <Button asChild variant="ghost" size="default" className="justify-between">
-                      <Link href="/generatorv1" className="inline-flex items-center gap-2">
+                      <Link href="/dashboard" className="inline-flex items-center gap-2">
                         <span>Generate</span>
                         <Sparkles className="h-4 w-4" />
                       </Link>

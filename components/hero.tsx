@@ -1,7 +1,7 @@
-import Link from "next/link";
-import Image from "next/image";
-import { Button } from "@/components/ui/button";
 import HeroImageBackground from "@/components/hero-image-background";
+import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import Link from "next/link";
 
 export function Hero() {
   return (
@@ -23,7 +23,7 @@ export function Hero() {
             Food2Photo is your AI food stylist. Upload a photo of any dish, and our app will compose it into an authentic, professional scene, ready for your menu, ads, or social media.
             </p>
             <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-start">
-              <Link href="/generatorv1" className="sm:w-auto">
+              <Link href="/dashboard" className="sm:w-auto">
                 <Button size="lg" className="w-full sm:w-auto">
                   Start Creating Now
                 </Button>

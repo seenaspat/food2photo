@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
+import { Geist } from "next/font/google";
 import "./globals.css";
-import SiteNavbar from "@/components/site-navbar";
-import { createClient } from "@/lib/supabase/server";
-import SiteFooter from "@/components/site-footer";
-import CookieBanner from "@/components/cookie-banner";
 
 const defaultUrl = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -13,8 +9,8 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Next.js and Supabase Starter Kit",
-  description: "The fastest way to build apps with Next.js and Supabase",
+  title: "Food2Photo - AI Food Photography",
+  description: "Transform your food photos into stunning professional shots with AI",
 };
 
 const geistSans = Geist({
@@ -23,14 +19,11 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getUser();
-  const initialIsAuthed = Boolean(data.user?.id);
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <body className={`${geistSans.className} antialiased`}>
@@ -40,10 +33,7 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <SiteNavbar initialIsAuthed={initialIsAuthed} />
           {children}
-          <SiteFooter />
-          <CookieBanner />
         </ThemeProvider>
       </body>
     </html>

@@ -8,6 +8,14 @@ import { StyleAdvanced } from "@/components/style-advanced";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Carousel,
+	CarouselContent,
+	CarouselDots,
+	CarouselItem,
+	CarouselNext,
+	CarouselPrevious,
+} from "@/components/ui/carousel";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,14 +31,6 @@ import { createClient } from "@/lib/supabase/client";
 import { Download, Image as ImageIcon, Loader2, Plus, Search, X } from "lucide-react";
 import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-	Carousel,
-	CarouselContent,
-	CarouselDots,
-	CarouselItem,
-	CarouselNext,
-	CarouselPrevious,
-} from "../../components/ui/carousel";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -848,7 +848,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 							if (!resp.ok) {
 								if (resp.status === 401) {
 									persistUiState();
-									window.location.href = "/auth/login?next=/generatorv1";
+									window.location.href = "/auth/login?next=/dashboard";
 									return;
 								}
 								if (resp.status === 402) {
