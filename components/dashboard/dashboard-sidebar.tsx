@@ -6,12 +6,13 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
-    CreditCard,
-    ImageIcon,
-    LogOut,
-    Menu,
-    Sparkles,
-    User
+  BookOpen,
+  CreditCard,
+  ImageIcon,
+  LogOut,
+  Menu,
+  Sparkles,
+  User
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -25,6 +26,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Generator", href: "/dashboard", icon: ImageIcon },
+  { label: "Menu Generator", href: "/dashboard/menu", icon: BookOpen },
   { label: "Account", href: "/account", icon: User },
 ];
 
