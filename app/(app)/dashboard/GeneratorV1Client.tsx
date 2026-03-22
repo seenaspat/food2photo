@@ -1,30 +1,36 @@
 "use client";
 
-import NextImage from "next/image";
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { CustomBackgroundCreator } from "@/components/custom-background-creator";
 import FileUpload from "@/components/kokonutui/file-upload";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { LoginForm } from "@/components/login-form";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, RectangleHorizontal, RectangleVertical, Square, X, Search, Info, Loader2 } from "lucide-react";
+import { PurposePicker } from "@/components/purpose-picker";
+import { StyleAdvanced } from "@/components/style-advanced";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Carousel,
 	CarouselContent,
+	CarouselDots,
 	CarouselItem,
 	CarouselNext,
 	CarouselPrevious,
-} from "../../components/ui/carousel";
-import { CarouselDots } from "../../components/ui/carousel";
+} from "@/components/ui/carousel";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { prepareImageForUpload } from "@/lib/client-image/prepare";
 import { classifyStatus } from "@/lib/http/classify";
+import {
+	computeEffectiveSettings,
+	getPurposePreset,
+	type AdvancedOverrides
+} from "@/lib/presets/purpose-presets";
+import { createClient } from "@/lib/supabase/client";
+import { Download, Image as ImageIcon, Loader2, Plus, Search, X } from "lucide-react";
+import NextImage from "next/image";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -66,17 +72,7 @@ interface Props {
 	topdownItems: CatalogItemLite[];
 }
 
-const lensOptions = ["35mm", "50mm", "85mm/macro"] as const;
-
-type Lens = typeof lensOptions[number];
-const aspectRatioOptions = [
-	{ id: "3:2", label: "3:2", icon: RectangleHorizontal },
-	{ id: "1:1", label: "1:1", icon: Square },
-	{ id: "4:5", label: "4:5", icon: RectangleVertical },
-	{ id: "16:9", label: "16:9", icon: RectangleHorizontal },
-	{ id: "9:16", label: "9:16", icon: RectangleVertical },
-] as const;
-type AspectRatioId = typeof aspectRatioOptions[number]["id"];
+// Lens and AspectRatio types now imported from purpose-presets
 
 export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props) {
 	const [uploaded, setUploaded] = useState<File | null>(null);
@@ -84,20 +80,33 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 	const [selectedBackground, setSelectedBackground] = useState<string | null>("none");
 	const [backgroundUpload, setBackgroundUpload] = useState<File | null>(null);
 	const [backgroundPreviewUrl, setBackgroundPreviewUrl] = useState<string | null>(null);
-	const [lens, setLens] = useState<Lens>("85mm/macro");
+	// Purpose-based settings (replaces lens/aspectRatio/preservePlate)
+	const [selectedPurpose, setSelectedPurpose] = useState<string>("instagram-post");
+	const [advancedOverrides, setAdvancedOverrides] = useState<AdvancedOverrides>({});
+	
+	// Compute effective settings from purpose + overrides
+	const purposePreset = useMemo(() => getPurposePreset(selectedPurpose), [selectedPurpose]);
+	const effectiveSettings = useMemo(
+		() => computeEffectiveSettings(purposePreset, advancedOverrides),
+		[purposePreset, advancedOverrides]
+	);
+	
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
 	const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 	const [variantHint, setVariantHint] = useState<string>("");
 	const [isRegenerating, setIsRegenerating] = useState<boolean>(false);
-	const [aspectRatio, setAspectRatio] = useState<AspectRatioId>("1:1");
-	const [preservePlate, setPreservePlate] = useState<boolean>(false);
 	const [selectedTopdownRef, setSelectedTopdownRef] = useState<string | null>(null);
 	const canEnhance = useMemo(() => Boolean(uploaded), [uploaded]);
 	const [showPreview, setShowPreview] = useState<boolean>(false);
 	const [creditBalance, setCreditBalance] = useState<number | null>(null);
 	const [userPlan, setUserPlan] = useState<{ code: string; name: string } | null>(null);
 	const [downloadFormat, setDownloadFormat] = useState<"png" | "jpeg" | "webp">("png");
+	
+	// Custom backgrounds state
+	const [customBackgrounds, setCustomBackgrounds] = useState<{ id: string; name: string; created_at: string }[]>([]);
+	const [showCustomBgCreator, setShowCustomBgCreator] = useState<boolean>(false);
+	const [selectedCustomBg, setSelectedCustomBg] = useState<string | null>(null);
 
 	// Persist/restore non-file UI state across auth redirects
 	const STORAGE_KEY = "generatorv1:ui-state";
@@ -106,14 +115,13 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 			const payload = {
 				selectedBackground,
 				selectedTopdownRef,
-				lens,
-				aspectRatio,
-				preservePlate,
+				selectedPurpose,
+				advancedOverrides,
 				variantHint,
 			};
 			sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
 		} catch {}
-	}, [selectedBackground, selectedTopdownRef, lens, aspectRatio, preservePlate, variantHint]);
+	}, [selectedBackground, selectedTopdownRef, selectedPurpose, advancedOverrides, variantHint]);
 
 	useEffect(() => {
 		try {
@@ -122,9 +130,10 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 			const parsed = JSON.parse(raw) as Partial<Record<string, unknown>>;
 			if (typeof parsed.selectedBackground === "string") setSelectedBackground(parsed.selectedBackground);
 			if (typeof parsed.selectedTopdownRef === "string") setSelectedTopdownRef(parsed.selectedTopdownRef);
-			if (typeof parsed.lens === "string" && (lensOptions as readonly string[]).includes(parsed.lens as string)) setLens(parsed.lens as Lens);
-			if (typeof parsed.aspectRatio === "string") setAspectRatio(parsed.aspectRatio as AspectRatioId);
-			if (typeof parsed.preservePlate === "boolean") setPreservePlate(parsed.preservePlate);
+			if (typeof parsed.selectedPurpose === "string") setSelectedPurpose(parsed.selectedPurpose);
+			if (parsed.advancedOverrides && typeof parsed.advancedOverrides === "object") {
+				setAdvancedOverrides(parsed.advancedOverrides as AdvancedOverrides);
+			}
 			if (typeof parsed.variantHint === "string") setVariantHint(parsed.variantHint);
 			sessionStorage.removeItem(STORAGE_KEY);
 		} catch {}
@@ -167,6 +176,21 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 
 	const ambienceQueryDebounced = useDebouncedValue(ambienceQuery, 300);
 	const topdownQueryDebounced = useDebouncedValue(topdownQuery, 300);
+
+	// Fetch custom backgrounds
+	const fetchCustomBackgrounds = useCallback(async () => {
+		try {
+			const res = await fetch("/api/backgrounds/custom");
+			if (res.ok) {
+				const data = await res.json();
+				setCustomBackgrounds(data.backgrounds ?? []);
+			}
+		} catch {}
+	}, []);
+
+	useEffect(() => {
+		void fetchCustomBackgrounds();
+	}, [fetchCustomBackgrounds]);
 
 	const backgroundOptions: BackgroundOption[] = useMemo(() => {
 		const opts: BackgroundOption[] = [
@@ -408,21 +432,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 											<TabsTrigger value="ambience">Ambience</TabsTrigger>
 											<TabsTrigger value="topview">Top view</TabsTrigger>
 											<TabsTrigger value="upload">Upload</TabsTrigger>
+											<TabsTrigger value="my">My</TabsTrigger>
 										</TabsList>
-										<div className="flex items-center gap-2">
-											<Checkbox id="preservePlate_bg" checked={preservePlate} onCheckedChange={(v) => setPreservePlate(Boolean(v))} />
-											<label htmlFor="preservePlate_bg" className="text-sm">Keep original plate/vessel</label>
-											<Tooltip>
-												<TooltipTrigger asChild>
-													<button aria-label="Plate info" className="inline-flex items-center justify-center size-5 rounded hover:bg-muted">
-														<Info className="h-4 w-4 text-muted-foreground" />
-													</button>
-												</TooltipTrigger>
-												<TooltipContent sideOffset={6}>
-													If off, we may place your dish on a new plate suitable to the environment.
-												</TooltipContent>
-											</Tooltip>
-										</div>
 									</div>
 									<TabsContent value="ambience">
 										<div className="mb-3 relative">
@@ -563,6 +574,53 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 											)}
 										</div>
 									</TabsContent>
+								<TabsContent value="my">
+									<div className="space-y-3">
+										<div className="flex items-center justify-between">
+											<p className="text-sm text-muted-foreground">
+												{customBackgrounds.length === 0 
+													? "Create a custom background from your own space photos."
+													: `${customBackgrounds.length} custom background${customBackgrounds.length === 1 ? "" : "s"}`
+												}
+											</p>
+											<Button
+												variant="outline"
+												size="sm"
+												onClick={() => setShowCustomBgCreator(true)}
+											>
+												<Plus className="h-4 w-4 mr-1" />
+												Create
+											</Button>
+										</div>
+										{customBackgrounds.length > 0 && (
+											<div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+												{customBackgrounds.map((bg) => (
+													<button
+														key={bg.id}
+														type="button"
+														onClick={() => {
+															setSelectedCustomBg(bg.id);
+															setSelectedBackground("none");
+															setBackgroundUpload(null);
+															setSelectedTopdownRef(null);
+														}}
+														className={`relative aspect-square rounded-md border overflow-hidden transition-all ${
+															selectedCustomBg === bg.id
+																? "ring-2 ring-primary ring-offset-2"
+																: "hover:ring-2 hover:ring-muted hover:ring-offset-1"
+														}`}
+													>
+														<div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+															<span className="text-xs font-medium text-center px-1 line-clamp-2">
+																{bg.name}
+															</span>
+														</div>
+													</button>
+												))}
+											</div>
+										)}
+									</div>
+								</TabsContent>
 								</Tabs>
 							</div>
 						</CardContent>
@@ -571,57 +629,23 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
                 <div className="space-y-4">
 					<Card>
 						<CardHeader>
-							<CardTitle>3) Camera & Style</CardTitle>
+							<CardTitle>3) Style</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<div className="space-y-4">
-								<div className="space-y-2">
-									<div className="text-sm font-medium">Lens Look</div>
-									<Tabs value={lens} onValueChange={(v) => setLens(v as Lens)} className="w-full">
-										<TabsList className="grid w-full grid-cols-3">
-											{lensOptions.map((opt) => (
-												<TabsTrigger key={opt} value={opt}>{opt}</TabsTrigger>
-											))}
-										</TabsList>
-									</Tabs>
-								</div>
-                                <div className="space-y-2">
-                                    <div className="text-sm font-medium">Aspect Ratio</div>
-                                    {isMobile ? (
-                                        <Select value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatioId)}>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select aspect ratio" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {aspectRatioOptions.map((opt) => {
-                                                    const Icon = opt.icon;
-                                                    return (
-                                                        <SelectItem key={opt.id} value={opt.id}>
-                                                            <div className="flex items-center gap-2">
-                                                                <Icon className="h-4 w-4" />
-                                                                {opt.label}
-                                                            </div>
-                                                        </SelectItem>
-                                                    );
-                                                })}
-                                            </SelectContent>
-                                        </Select>
-                                    ) : (
-                                        <Tabs value={aspectRatio} onValueChange={(v) => setAspectRatio(v as AspectRatioId)} className="w-full">
-                                            <TabsList className="grid w-full grid-cols-5">
-                                                {aspectRatioOptions.map((opt) => {
-                                                    const Icon = opt.icon;
-                                                    return (
-                                                        <TabsTrigger key={opt.id} value={opt.id} className="flex items-center gap-2">
-                                                            <Icon className="h-4 w-4" />
-                                                            {opt.label}
-                                                        </TabsTrigger>
-                                                    );
-                                                })}
-                                            </TabsList>
-                                        </Tabs>
-                                    )}
-                                </div>
+								<PurposePicker
+									value={selectedPurpose}
+									onValueChange={(purposeId) => {
+										setSelectedPurpose(purposeId);
+										// Reset overrides when purpose changes
+										setAdvancedOverrides({});
+									}}
+								/>
+								<StyleAdvanced
+									defaults={purposePreset}
+									overrides={advancedOverrides}
+									onOverridesChange={setAdvancedOverrides}
+								/>
 							</div>
 						</CardContent>
 					</Card>
@@ -659,6 +683,8 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
                             fd.append("dish", preparedDish);
                             if (preparedBg) {
                                 fd.append("background", preparedBg);
+							} else if (selectedCustomBg) {
+								fd.append("customBgId", selectedCustomBg);
 							} else if (selectedTopdownRef) {
 								fd.append("bgRef", selectedTopdownRef);
 							} else if (selectedBackground && selectedBackground !== "none") {
@@ -668,9 +694,9 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 									fd.append("bgRef", `v3-ambience:${selected.preset}`);
 								}
 							}
-							fd.append("lensLook", lens);
-							fd.append("aspectRatio", aspectRatio);
-							fd.append("preservePlate", preservePlate ? "1" : "0");
+							fd.append("lensLook", effectiveSettings.lens);
+						fd.append("aspectRatio", effectiveSettings.aspectRatio);
+						fd.append("preservePlate", effectiveSettings.preservePlate ? "1" : "0");
                       const debugSuffix = (() => {
 								try {
 									const p = new URLSearchParams(window.location.search);
@@ -756,12 +782,18 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
                     </DialogContent>
                   </Dialog>
 
+                  <CustomBackgroundCreator
+                    open={showCustomBgCreator}
+                    onOpenChange={setShowCustomBgCreator}
+                    onSuccess={fetchCustomBackgrounds}
+                  />
+
 					{showPreview && (
 						<Card>
 							<CardHeader>
 								<CardTitle className="flex items-center justify-between">
 									<span>Preview</span>
-									<span className="text-xs font-normal text-muted-foreground flex items-center gap-2">Lens: {lens} · Ratio: {aspectRatio} {preservePlate ? (<Badge variant="secondary">Plate kept</Badge>) : (<Badge variant="outline">Plate may change</Badge>)}</span>
+									<span className="text-xs font-normal text-muted-foreground flex items-center gap-2">Lens: {effectiveSettings.lens} · Ratio: {effectiveSettings.aspectRatio} {effectiveSettings.preservePlate ? (<Badge variant="secondary">Plate kept</Badge>) : (<Badge variant="outline">Plate may change</Badge>)}</span>
 								</CardTitle>
 							</CardHeader>
 							<CardContent>
@@ -816,7 +848,7 @@ export default function GeneratorV1Client({ ambienceItems, topdownItems }: Props
 							if (!resp.ok) {
 								if (resp.status === 401) {
 									persistUiState();
-									window.location.href = "/auth/login?next=/generatorv1";
+									window.location.href = "/auth/login?next=/dashboard";
 									return;
 								}
 								if (resp.status === 402) {

@@ -60,7 +60,6 @@ export async function updateSession(request: NextRequest) {
     pathname === "/privacy" ||
     pathname === "/contact" ||
     pathname === "/features" ||
-    pathname === "/generatorv1" ||
     pathname.startsWith("/api/");
 
   if (
@@ -75,13 +74,20 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If user is already authenticated and navigates to auth pages, redirect to app
+  // Redirect authenticated users from root to dashboard
+  if (user && pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  // If user is already authenticated and navigates to auth pages, redirect to dashboard
   if (
     user &&
     (pathname.startsWith("/auth") || pathname === "/login")
   ) {
     const url = request.nextUrl.clone();
-    url.pathname = "/generatorv1";
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

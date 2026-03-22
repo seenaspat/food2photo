@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { Loader2 } from "lucide-react";
+import { useState } from "react";
 
 function GoogleIcon() {
   return (
@@ -30,7 +30,7 @@ export function GoogleSignInButton({ label = "Continue with Google", variant = "
         try {
           setLoading(true);
           const supabase = createClient();
-          const redirectTo = `${window.location.origin}/auth/callback?next=/generatorv1`;
+          const redirectTo = `${window.location.origin}/auth/callback?next=/dashboard`;
           await supabase.auth.signInWithOAuth({
             provider: "google",
             options: { redirectTo, queryParams: { prompt: "select_account" } },

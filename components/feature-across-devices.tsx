@@ -1,8 +1,8 @@
 "use client";
-import Image from "next/image";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { motion } from "motion/react";
+import Image from "next/image";
+import Link from "next/link";
 
 export function FeatureAcrossDevices() {
   return (
@@ -22,7 +22,7 @@ export function FeatureAcrossDevices() {
           Why wait? Snap a photo of your dish the moment it&apos;s perfect and turn it into a stunning, styled shot right from your phone. Food2Photo is your on-the-spot art director, ensuring you never miss a chance to create mouth-watering content.
           </p>
           <div className="mt-8">
-            <Link href="/generatorv1">
+            <Link href="/dashboard">
               <Button size="lg">Try It Now</Button>
             </Link>
           </div>

@@ -1,19 +1,25 @@
 import { NextResponse } from "next/server";
-import path from "node:path";
 import { readFile } from "node:fs/promises";
-import sharp from "sharp";
+import path from "node:path";
 import { loadCatalog, resolveBackground } from "../../../lib/backgrounds/catalog.server";
-import type { ResolvedBackground, BgRef } from "../../../lib/backgrounds/types";
+import type { BgRef, ResolvedBackground } from "../../../lib/backgrounds/types";
+import {
+  analyzeDish,
+  generateFoodImage,
+  normalizeAspectRatio,
+  prepareImageForApi,
+} from "../../../lib/genai";
 import { buildCompositionPrompt } from "../../../lib/generation/prompt";
-import { createClient } from "../../../lib/supabase/server";
+import { finalizeCredit, reserveCredit } from "../../../lib/metering";
 import { isRateLimited, logApiRequest } from "../../../lib/rate-limit";
-import { reserveCredit, finalizeCredit } from "../../../lib/metering";
+import { createClient } from "../../../lib/supabase/server";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID();
+  
   try {
-    const requestId = crypto.randomUUID();
     const supabase = await createClient();
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id ?? null;
@@ -34,17 +40,18 @@ export async function POST(request: Request) {
       userId,
       requestId,
       apiRoute: "/api/generate",
-      model: "gemini-2.5-flash-image-preview",
+      model: "gemini-3-pro-image-preview",
       metadata: {},
     });
     if (!reserved) {
       return NextResponse.json({ error: "Insufficient credits", requestId }, { status: 402, headers: { "X-Request-Id": requestId } });
     }
+    
     const formData = await request.formData();
     const dish = formData.get("dish");
     const background = formData.get("background");
     const lensLook = String(formData.get("lensLook") || "");
-    const aspectRatio = String(formData.get("aspectRatio") || "");
+    const aspectRatioRaw = String(formData.get("aspectRatio") || "");
     const preservePlate = String(formData.get("preservePlate") || "0") === "1";
     const debug = (process.env.DEBUG_ANALYSIS === "1") || (() => { try { return new URL(request.url).searchParams.get("debug") === "1"; } catch { return false; }})();
 
@@ -53,60 +60,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing dish file", requestId }, { status: 400, headers: { "X-Request-Id": requestId } });
     }
 
+    // Verify GEMINI_API_KEY is available
+    if (!process.env.GEMINI_API_KEY) {
+      await finalizeCredit(supabase, { userId, requestId, success: false });
+      return NextResponse.json({ error: "Missing GEMINI_API_KEY", requestId }, { status: 500, headers: { "X-Request-Id": requestId } });
+    }
+
     // Prefer explicit bgRef; fallback to legacy bgPreset → bgRef mapping
     const bgRefRaw = String(formData.get("bgRef") || "");
     const legacyBgPreset = String(formData.get("bgPreset") || "");
     const effectiveBgRef = bgRefRaw || (legacyBgPreset ? `v3-ambience:${legacyBgPreset}` : "");
 
-    // Prototype: call Google Generative AI via Vercel AI Gateway (OpenAI-compatible API)
-    // and request image output. Send the input image as a data URL inside messages.
-    const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
-    if (!apiKey) {
-      await finalizeCredit(supabase, { userId, requestId, success: false });
-      return NextResponse.json({ error: "Missing AI_GATEWAY_API_KEY", requestId }, { status: 500, headers: { "X-Request-Id": requestId } });
+    // Handle custom background ID (user-created backgrounds)
+    const customBgId = String(formData.get("customBgId") || "");
+    let customBgSnippet = "";
+    if (customBgId) {
+      const { data: customBg, error: customBgError } = await supabase
+        .from("custom_backgrounds")
+        .select("prompt_snippet")
+        .eq("id", customBgId)
+        .eq("user_id", userId)
+        .single();
+      
+      if (customBgError || !customBg) {
+        if (debug) console.log("[bg] custom background not found:", customBgId);
+      } else {
+        customBgSnippet = customBg.prompt_snippet;
+        if (debug) console.log("[bg] using custom background snippet");
+      }
     }
 
+    // Normalize aspect ratio using native support
+    const aspectRatio = normalizeAspectRatio(aspectRatioRaw || "1:1");
+
+    // Prepare dish image for API (optimized for payload size)
     const dishArrayBuffer = await dish.arrayBuffer();
-    const dishOriginalBuffer = Buffer.from(new Uint8Array(dishArrayBuffer));
-    // Create AR-locked canvas with the dish centered (single reference image with target aspect)
-    // Reduce dimensions and use JPEG to keep the request body small and avoid 413 from the gateway
-    const canvasDims = (() => {
-      // Max long edge ~1280px to keep payloads small
-      switch (aspectRatio) {
-        case "1:1": return { w: 1024, h: 1024 };
-        case "4:5": return { w: 1024, h: 1280 };
-        case "3:2": return { w: 1200, h: 800 };
-        case "16:9": return { w: 1280, h: 720 };
-        case "9:16": return { w: 720, h: 1280 };
-        default: return { w: 1024, h: 1024 };
-      }
-    })();
-    // Build AR-locked canvas without alpha: blurred-cover background + centered contain overlay
-    const blurredCoverJpeg = await sharp(dishOriginalBuffer)
-      .rotate()
-      .resize({ width: canvasDims.w, height: canvasDims.h, fit: "cover" })
-      .blur(12)
-      .modulate({ brightness: 1.0, saturation: 0.95 })
-      .jpeg({ quality: 82, mozjpeg: true })
-      .toBuffer();
-
-    const overlayJpeg = await sharp(dishOriginalBuffer)
-      .rotate()
-      .resize({
-        width: Math.floor(canvasDims.w * 0.92),
-        height: Math.floor(canvasDims.h * 0.92),
-        fit: "inside",
-        background: { r: 0, g: 0, b: 0 },
-      })
-      .jpeg({ quality: 90, mozjpeg: true })
-      .toBuffer();
-
-    const composedJpeg = await sharp(blurredCoverJpeg)
-      .composite([{ input: overlayJpeg, gravity: "center" }])
-      .jpeg({ quality: 88, mozjpeg: true })
-      .toBuffer();
-
-    const dishDataUrl = `data:image/jpeg;base64,${composedJpeg.toString("base64")}`;
+    const dishBuffer = Buffer.from(new Uint8Array(dishArrayBuffer));
+    const dishDataUrl = await prepareImageForApi(dishBuffer, { maxDimension: 1280, quality: 90 });
 
     // Load analysis template (external JSON) if available
     let analysisTemplateJson = "";
@@ -116,82 +106,28 @@ export async function POST(request: Request) {
       analysisTemplateJson = raw;
     } catch {}
 
-    // First pass: analyze dish → JSON spec (strict)
-    const analysisPrompt = [
-      "Analyze Image A (the dish) and return a strict JSON object describing it.",
-      analysisTemplateJson ? `Use this JSON schema and fill plausible values only: ${analysisTemplateJson}` : "Return a compact JSON with fields described below.",
-      !analysisTemplateJson ? "Fields:" : "",
-      !analysisTemplateJson ? "- name, category, cuisine, course" : "",
-      !analysisTemplateJson ? "- components[] with role,name,prep,cut,count,approx_size_mm,color,texture,gloss,translucency,must_preserve" : "",
-      !analysisTemplateJson ? "- arrangement (serving_state, layer_order with coverage_pct & thickness_mm, footprint shape/dimensions, repeated_units)" : "",
-      !analysisTemplateJson ? "- vessel (type, material, color, finish, shape, rim_profile, diameter_cm, depth_cm, liner)" : "",
-      !analysisTemplateJson ? "- sauces[], garnish[], base_area, optics, temperature" : "",
-      !analysisTemplateJson ? "- approximate_scale, camera_hint, constraints, category_addons (optional)" : "",
-      "Return JSON only. No prose.",
-    ].filter(Boolean).join("\n");
-
-    const analysisResp = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
-        stream: false,
-        modalities: ["text", "image"],
-        temperature: 0,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: analysisPrompt },
-              { type: "image_url", image_url: { url: dishDataUrl } },
-            ],
-          },
-        ],
-      }),
+    // First pass: analyze dish → JSON spec
+    const analysisResult = await analyzeDish({
+      imageDataUrl: dishDataUrl,
+      schemaTemplate: analysisTemplateJson || undefined,
+      debug,
     });
-    if (debug) console.log("[analysis] status:", analysisResp.status, analysisResp.statusText);
-
-    let dishSpec: unknown = null;
-    if (analysisResp.ok) {
-      type ChatCompletion = {
-        choices: Array<{
-          message?: { content?: unknown }
-        }>
-      };
-      const analysisJson = (await analysisResp.json()) as ChatCompletion;
-      const content = analysisJson?.choices?.[0]?.message?.content as unknown;
-      const text = typeof content === "string" ? content : (Array.isArray(content) ? (content as Array<{ text?: string }>)[0]?.text : undefined);
-      if (debug) {
-        const preview = typeof text === "string" ? text.slice(0, 1200) : "<non-text content>";
-        console.log("[analysis] raw content (trunc):", preview);
-      }
-      if (typeof text === "string") {
-        try { dishSpec = JSON.parse(text); } catch {}
-      }
-    } else if (debug) {
-      try { console.log("[analysis] error:", await analysisResp.text()); } catch {}
-    }
 
     let dishSpecSnippet = "";
-    if (dishSpec && typeof dishSpec === "object") {
-      dishSpecSnippet = `DISH_SPEC:\n${JSON.stringify(dishSpec)}`;
+    if (analysisResult.success && analysisResult.spec) {
+      dishSpecSnippet = `DISH_SPEC:\n${JSON.stringify(analysisResult.spec)}`;
       if (debug) {
-        try { console.log("[analysis] parsed keys:", Object.keys(dishSpec as Record<string, unknown>)); } catch {}
-        console.log("[analysis] dishSpec JSON:", dishSpec);
+        try { console.log("[analysis] parsed keys:", Object.keys(analysisResult.spec)); } catch {}
+        console.log("[analysis] dishSpec JSON:", analysisResult.spec);
       }
     }
 
+    // Prepare background image if provided
     let backgroundDataUrl: string | null = null;
     if (!effectiveBgRef && background instanceof File) {
-      // Compress background to keep payload small as well
       const bgArrayBuffer = await background.arrayBuffer();
       const bgBuffer = Buffer.from(bgArrayBuffer);
-      const bgCompressed = await sharp(bgBuffer)
-        .rotate()
-        .resize({ width: 1280, height: 1280, fit: "inside" })
-        .jpeg({ quality: 78, mozjpeg: true })
-        .toBuffer();
-      backgroundDataUrl = `data:image/jpeg;base64,${bgCompressed.toString("base64")}`;
+      backgroundDataUrl = await prepareImageForApi(bgBuffer, { maxDimension: 1280, quality: 78 });
     }
 
     const effectiveLensLook = lensLook && lensLook.trim().length > 0 ? lensLook : "50mm";
@@ -262,13 +198,15 @@ export async function POST(request: Request) {
       }
     }
 
-    const bgLine = effectiveBgRef
-      ? `Environment preset: ${effectiveBgRef} via template + vars`
-      : (backgroundDataUrl
-        ? "Image B: the target environment/background"
-        : (usedFallbackNoBgPreset
-          ? "Environment preset: v3-ambience:no-background-default via template + vars"
-          : "No background provided; synthesize a plausible environment consistent with restaurant and dish photography"));
+    const bgLine = customBgSnippet
+      ? `Custom Environment Specification:\n${customBgSnippet}`
+      : effectiveBgRef
+        ? `Environment preset: ${effectiveBgRef} via template + vars`
+        : (backgroundDataUrl
+          ? "Image B: the target environment/background"
+          : (usedFallbackNoBgPreset
+            ? "Environment preset: v3-ambience:no-background-default via template + vars"
+            : "No background provided; synthesize a plausible environment consistent with restaurant and dish photography"));
     const platePolicy = preservePlate ? "AND its original plate/vessel exactly" : "ONLY (render a new plate/vessel suitable to the environment)";
 
     const narrativeText = await buildCompositionPrompt({
@@ -280,68 +218,23 @@ export async function POST(request: Request) {
       platePolicy,
     });
 
-    const messagesContent: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }> = [
-      { type: "text", text: narrativeText },
-      { type: "image_url", image_url: { url: dishDataUrl } },
-    ];
-    if (backgroundDataUrl) {
-      messagesContent.push({ type: "image_url", image_url: { url: backgroundDataUrl } });
-    }
-
-    const resp = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
-        stream: false,
-        // Gateway supports multimodal generation via 'modalities'
-        modalities: ["text", "image"],
-        temperature: 0,
-        top_p: 0.9,
-        messages: [
-          {
-            role: "user",
-            content: messagesContent,
-          },
-        ],
-        // Hard cap the server-side request size to avoid 413 on the gateway
-        // by explicitly keeping a compact context (no system/tool messages here)
-      }),
+    // Generate the image using direct Google GenAI
+    const result = await generateFoodImage({
+      dishImageUrl: dishDataUrl,
+      backgroundImageUrl: backgroundDataUrl ?? undefined,
+      prompt: narrativeText,
+      aspectRatio,
+      temperature: 0,
+      debug,
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
+    if (!result.success || !result.imageDataUrl) {
       await finalizeCredit(supabase, { userId, requestId, success: false });
-      return NextResponse.json({ error: `Gateway error: ${resp.status} ${errText}`, requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
-    }
-    const json = (await resp.json()) as unknown;
-
-    // Narrow the JSON structure to extract base64 image
-    type GatewayResponse = {
-      choices?: Array<{ message?: { images?: Array<{ image_url?: { url?: string } }> } }>
-    };
-    const images =
-      typeof json === "object" && json !== null &&
-      "choices" in (json as GatewayResponse) && Array.isArray((json as GatewayResponse).choices) &&
-      (json as GatewayResponse).choices?.[0]?.message?.images;
-
-    const imageUrl: string | undefined = Array.isArray(images)
-      ? images[0]?.image_url?.url
-      : undefined;
-
-    if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("data:image/")) {
-      await finalizeCredit(supabase, { userId, requestId, success: false });
-      return NextResponse.json({ error: "No image produced", requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
+      return NextResponse.json({ error: result.error ?? "No image produced", requestId }, { status: 502, headers: { "X-Request-Id": requestId } });
     }
 
-    const commaIdx = imageUrl.indexOf(",");
-    const header = imageUrl.substring(5, commaIdx); // e.g., image/png;base64
-    const outType = header.split(";")[0]; // image/png
-    const b64 = imageUrl.substring(commaIdx + 1);
-    const outBuffer = Buffer.from(b64, "base64");
+    const outBuffer = Buffer.from(result.base64!, "base64");
+    const outType = result.mimeType ?? "image/png";
     const outName = outType.includes("jpeg") ? "enhanced.jpg" : outType.includes("png") ? "enhanced.png" : "enhanced.webp";
 
     // Fetch updated balance and return it in headers to avoid extra client calls
@@ -365,8 +258,6 @@ export async function POST(request: Request) {
     return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, requestId }, { status: 500, headers: { "X-Request-Id": requestId } });
   }
 }
-
-
