@@ -30,9 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*.local
-.env
+# Environment files may contain credentials. Keep every variant local and
+# explicitly allow only the documented, value-free example.
+.env*
+!.env.example
 
 # vercel
 .vercel
